@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import GoogleTVDriver
 @testable import TVRemoteKit
 #if canImport(Security)
 import Security
@@ -103,6 +104,31 @@ private actor TranscriptGoogleTVTransport: GoogleTVTLSTransport {
         openings.append(Opening(endpoint: endpoint, mode: mode))
         guard !connections.isEmpty else { throw TVError.invalidResponse }
         return connections.removeFirst()
+    }
+}
+
+private final class GoogleTVIdleClock: ConnectionClock, @unchecked Sendable {
+    struct Sleep: Sendable {
+        let duration: Duration
+        let resume: AsyncStream<Void>.Continuation
+    }
+
+    private let lock = NSLock()
+    private var instant = ContinuousClock.now
+    let sleeps: AsyncStream<Sleep>
+    private let waiting: AsyncStream<Sleep>.Continuation
+
+    init() { (sleeps, waiting) = AsyncStream.makeStream() }
+
+    func now() -> ContinuousClock.Instant { lock.withLock { instant } }
+
+    func advance(by duration: Duration) { lock.withLock { instant += duration } }
+
+    func sleep(for duration: Duration) async throws {
+        let (gate, resume) = AsyncStream<Void>.makeStream()
+        waiting.yield(Sleep(duration: duration, resume: resume))
+        for await _ in gate {}
+        try Task.checkCancellation()
     }
 }
 
@@ -263,6 +289,35 @@ private func makeDriver(
     #expect(await states.next() == .degraded)
     #expect(await remote.writes == initialRemoteWrites + [hex("05 4a0308ac02")])
     await #expect(throws: TVError.unreachable) { try await driver.keepAlive() }
+}
+
+@Test func googleTVOutboundKeysExtendIdleDeadlineWithoutInboundTraffic() async throws {
+    let remote = TranscriptTLSStream(remoteReady)
+    let clock = GoogleTVIdleClock()
+    let session = GoogleTVRemoteSession(wire: GoogleTVWire(stream: remote), clock: clock, now: clock.now)
+    try await session.start()
+    let states = StateFeed()
+    let listener = Task { await session.listen(states: states) }
+    defer { listener.cancel() }
+    var sleeps = clock.sleeps.makeAsyncIterator()
+    let first = try #require(await sleeps.next())
+    #expect(first.duration == .seconds(16))
+
+    clock.advance(by: .seconds(15))
+    try await session.sendKey(24)
+    clock.advance(by: .seconds(1))
+    first.resume.finish()
+    let extended = try #require(await sleeps.next())
+    #expect(extended.duration == .seconds(15))
+    try await session.checkConnection()
+    #expect(await remote.writes == initialRemoteWrites + [hex("06 520408181003")])
+    #expect(!(await remote.closed))
+
+    clock.advance(by: .seconds(15))
+    extended.resume.finish()
+    await listener.value
+    await #expect(throws: TVError.timedOut) { try await session.checkConnection() }
+    #expect(await remote.closed)
 }
 
 @Test func googleTVRejectsOversizedFramesBeforePrompting() async throws {

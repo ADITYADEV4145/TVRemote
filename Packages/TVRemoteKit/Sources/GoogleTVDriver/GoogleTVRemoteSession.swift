@@ -8,17 +8,26 @@ actor GoogleTVRemoteSession {
     }
 
     private let wire: GoogleTVWire
+    private let clock: any ConnectionClock
+    private let now: @Sendable () -> ContinuousClock.Instant
+    private var lastActivity: ContinuousClock.Instant
     private var features: UInt64 = 0
     private var loss: (any Error)?
 
-    init(wire: GoogleTVWire) {
+    init(
+        wire: GoogleTVWire, clock: any ConnectionClock = SystemConnectionClock(),
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }
+    ) {
         self.wire = wire
+        self.clock = clock
+        self.now = now
+        lastActivity = now()
     }
 
     func start() async throws {
         var configured = false
         for _ in 0..<24 {
-            let message = try await wire.read()
+            let message = try await read()
             if let config = try message.message(1), let mask = config.number(1) {
                 configured = true
                 features = mask & Feature.supported
@@ -44,9 +53,11 @@ actor GoogleTVRemoteSession {
 
     func listen(states: StateFeed) async {
         do {
-            while !Task.isCancelled {
-                let message = try await wire.read(timeout: .seconds(16))
-                try await answerPing(message)
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { try await self.receiveMessages() }
+                group.addTask { try await self.monitorIdle() }
+                defer { group.cancelAll() }
+                _ = try await group.next()
             }
         } catch {
             if !Task.isCancelled {
@@ -55,6 +66,20 @@ actor GoogleTVRemoteSession {
             }
         }
         await wire.stream.close()
+    }
+
+    private func receiveMessages() async throws {
+        while !Task.isCancelled {
+            try await answerPing(read(timeout: nil))
+        }
+    }
+
+    private func monitorIdle() async throws {
+        while !Task.isCancelled {
+            let remaining = now().duration(to: lastActivity + .seconds(16))
+            guard remaining > .zero else { throw TVError.timedOut }
+            try await clock.sleep(for: remaining)
+        }
     }
 
     func checkConnection() throws {
@@ -80,5 +105,12 @@ actor GoogleTVRemoteSession {
 
     private func send(_ field: Int, _ message: Proto) async throws {
         try await wire.send(Proto([(field, Proto.message(message))]))
+        lastActivity = now()
+    }
+
+    private func read(timeout: Duration? = .seconds(3)) async throws -> Proto {
+        let message = try await wire.read(timeout: timeout)
+        lastActivity = now()
+        return message
     }
 }

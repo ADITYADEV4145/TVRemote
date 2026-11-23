@@ -119,8 +119,9 @@ struct GoogleTVWire: Sendable {
         try await stream.write(Proto.varint(UInt64(body.count)) + body)
     }
 
-    func read(timeout: Duration = .seconds(3)) async throws -> Proto {
-        try await withThrowingTaskGroup(of: Data.self) { group in
+    func read(timeout: Duration? = .seconds(3)) async throws -> Proto {
+        guard let timeout else { return try await Proto(decoding: readFrame()) }
+        return try await withThrowingTaskGroup(of: Data.self) { group in
             group.addTask { try await readFrame() }
             group.addTask {
                 try await Task.sleep(for: timeout)
