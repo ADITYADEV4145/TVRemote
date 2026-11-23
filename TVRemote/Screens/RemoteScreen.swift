@@ -83,7 +83,7 @@ struct RemoteScreen: View {
             Text(connection.currentDevice?.name ?? "Your TV remote")
                 .font(RemoteTheme.title).accessibilityAddTraits(.isHeader)
             HStack {
-                Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
+                Text(connection.isConnecting && connection.state != .recovering ? "Connecting" : connection.state.rawValue)
                     .foregroundStyle(RemoteTheme.muted)
                     .accessibilityHint(connection.canPower && !connection.canControl ? "Power can try to wake this TV." : "")
                 if connection.isDemo {
@@ -98,6 +98,9 @@ struct RemoteScreen: View {
                 }
             }
             .font(.subheadline)
+            if let reason = connection.powerUnavailableReason {
+                Text(reason).font(.footnote).foregroundStyle(RemoteTheme.muted)
+            }
         }
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)

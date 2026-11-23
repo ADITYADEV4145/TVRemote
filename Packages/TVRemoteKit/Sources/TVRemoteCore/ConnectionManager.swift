@@ -153,14 +153,41 @@ public actor ConnectionManager {
 
     public func wake() async throws {
         guard let tv = currentDevice else { throw TVError.notConnected }
+        if tv.capabilities.contains(.controlWake), !tv.capabilities.contains(.networkWake) {
+            let token = generation
+            if phase == .connecting || phase == .recovering {
+                for await _ in state {
+                    try ensureCurrent(token)
+                    if phase != .connecting && phase != .recovering { break }
+                }
+                try ensureCurrent(token)
+                switch phase {
+                case .ready: break
+                case .needsRepair: throw TVError.pairingRequired
+                case .asleep: throw TVError.asleep
+                default: throw TVError.unreachable
+                }
+            }
+            try await send(.powerOn)
+            return
+        }
         guard tv.capabilities.contains(.networkWake) else { throw TVError.notSupported }
         let factory = try factory(for: tv.id.platform)
+        let isReconnecting = phase == .connecting || phase == .recovering
+        if isReconnecting {
+            let token = generation
+            try await factory.makeDriver().wake(tv)
+            try ensureCurrent(token)
+            guard phase == .asleep || phase == .degraded else { return }
+        }
         let token = begin(tv: tv)
         do {
             let credential = try await loadCredential(for: tv)
             try ensureCurrent(token)
-            try await factory.makeDriver().wake(tv)
-            try ensureCurrent(token)
+            if !isReconnecting {
+                try await factory.makeDriver().wake(tv)
+                try ensureCurrent(token)
+            }
             try await recover(tv, credential: credential, factory: factory, token: token, attemptWake: false)
         } catch {
             fail(error, token: token, fallback: .asleep)

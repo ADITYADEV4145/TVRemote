@@ -123,13 +123,19 @@ final class RemoteViewModel {
         get { currentDevice.flatMap { keyboardDrafts[$0.id] } ?? "" }
         set { if let id = currentDevice?.id { keyboardDrafts[id] = newValue } }
     }
-    var canPower: Bool { !wakeInFlight && (canControl || (!isConnecting && canWake)) }
+    var canPower: Bool { !wakeInFlight && (canControl || canWake) }
+    var powerUnavailableReason: String? {
+        guard [.recovering, .asleep, .degraded].contains(state),
+              let device = currentDevice.flatMap({ live?.device($0.id) }),
+              device.id.platform == .samsung || device.id.platform == .lg,
+              device.wakeAddress == nil else { return nil }
+        return "Power needs a saved TV MAC address."
+    }
+
     private var canWake: Bool {
-        guard let device = currentDevice else { return false }
+        guard currentDevice != nil, !isConnecting || state == .recovering else { return false }
         if live == nil { return state == .asleep }
-        let capabilities = live?.device(device.id)?.capabilities ?? []
-        if state == .connecting || state == .recovering { return capabilities.contains(.networkWake) }
-        guard state == .asleep || state == .degraded else { return false }
+        guard [.connecting, .recovering, .asleep, .degraded].contains(state) else { return false }
         return !capabilities.intersection([.networkWake, .controlWake]).isEmpty
     }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
@@ -365,21 +371,13 @@ final class RemoteViewModel {
     func send(_ key: RemoteKey) async {
         let changesChannel = key == .channelUp || key == .channelDown
         if changesChannel && !canChangeChannel { return }
-        if key == .power, canWake, !isConnecting, let device = currentDevice {
-            guard !wakeInFlight else { return }
-            if let live, live.device(device.id)?.capabilities.contains(.networkWake) == true {
-                wakeInFlight = true
-                defer { wakeInFlight = false }
-                await runCommand("Wake TV", feedback: "Wake signal sent") {
-                    try await live.manager.wake()
-                }
-                return
-            }
-            await perform("Wake TV", feedback: "Waking \(device.name)") { [self] in
+        if key == .power && !canPower { return }
+        if key == .power, canWake, let device = currentDevice {
+            wakeInFlight = true
+            defer { wakeInFlight = false }
+            await runCommand("Wake TV", feedback: "Wake signal sent", whileConnecting: true) {
                 if let live {
-                    if live.device(device.id)?.capabilities.contains(.controlWake) == true {
-                        try await live.manager.send(.powerOn)
-                    } else { throw TVError.notSupported }
+                    try await live.manager.wake()
                 } else {
                     try await driver?.wake(device)
                 }
@@ -637,9 +635,9 @@ final class RemoteViewModel {
         }
     }
 
-    private func runCommand(_ command: String, feedback message: String?,
+    private func runCommand(_ command: String, feedback message: String?, whileConnecting: Bool = false,
                             action: @MainActor () async throws -> Void) async {
-        guard !isConnecting else { return }
+        guard !isConnecting || whileConnecting else { return }
         let generation = messageGeneration
         let deviceID = currentDevice?.id
         error = nil

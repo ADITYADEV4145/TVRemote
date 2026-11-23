@@ -101,6 +101,18 @@ final class SimulatedTVTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 10))
         capture("\(brand)-reconnected")
 
+        if brand == "samsung" || brand == "lg" {
+            try await chaos("sleep", for: brand)
+            let reconnecting = app.staticTexts["Reconnecting"]
+            let sawRecovery = reconnecting.waitForExistence(timeout: 15)
+            let powerEnabled = app.buttons["Power"].isEnabled
+            capture("\(brand)-standby-power")
+            try await chaos("wake", for: brand)
+            XCTAssertTrue(sawRecovery)
+            XCTAssertTrue(powerEnabled)
+            XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 20))
+        }
+
         switch brand {
         case "roku":
             try await verifyInputs(in: app, brand: brand, firstID: "tvinput.hdmi1", secondID: "tvinput.hdmi2")

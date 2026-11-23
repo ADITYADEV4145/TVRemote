@@ -241,6 +241,52 @@ final class ConnectionManagerTests: XCTestCase {
         }
     }
 
+    func testPowerDuringSavedTVRecoveryUsesAvailableWakePath() async throws {
+        for platform in [TVPlatform.samsung, .lg, .roku, .googleTV] {
+            for hasWake in [true, false] {
+                let clock = MonitorClock()
+                let networkWake = hasWake && platform != .googleTV
+                let capability: TVCapabilities = platform == .googleTV ? .controlWake : .networkWake
+                let (_, session, device, driver) = try await liveFixture(
+                    platform: platform, hasWake ? [.remoteKeys, capability] : [.remoteKeys],
+                    clock: clock, wakeAddress: networkWake && platform != .roku ? MACAddress(rawValue: "02:00:00:00:00:01") : nil
+                )
+                if platform != .roku { try await session.credentials.save(.token("paired"), for: device.id) }
+                session.lastSelectedID = session.save(device).id
+                await driver.goOffline()
+                let connection = RemoteViewModel(live: session)
+                let restoration = Task { await connection.restoreSelection() }
+                var sleeps = clock.sleeps.stream.makeAsyncIterator()
+                _ = await sleeps.next()
+                await waitForState(.recovering, on: connection)
+                XCTAssertTrue(connection.isConnecting)
+                XCTAssertFalse(connection.canControl)
+                XCTAssertEqual(connection.canPower, hasWake, "\(platform)")
+                let missingMAC = !hasWake && (platform == .samsung || platform == .lg)
+                XCTAssertEqual(connection.powerUnavailableReason, missingMAC ? "Power needs a saved TV MAC address." : nil)
+                let passiveWakes = await driver.wakes
+                XCTAssertEqual(passiveWakes, 0)
+                if platform == .googleTV && hasWake {
+                    let power = Task { await connection.send(.power) }
+                    await Task.yield()
+                    await driver.goOnline()
+                    clock.ticks.continuation.finish()
+                    await power.value
+                    let keys = await driver.keys
+                    XCTAssertEqual(keys, [.powerOn])
+                } else {
+                    await connection.send(.power)
+                    let wakes = await driver.wakes
+                    XCTAssertEqual(wakes, networkWake ? 1 : 0, "\(platform)")
+                    XCTAssertEqual(session.manager.currentState, .recovering)
+                    clock.ticks.continuation.finish()
+                }
+                await restoration.value
+                XCTAssertEqual(connection.canControl, hasWake, "\(platform)")
+            }
+        }
+    }
+
     func testForegroundMonitorReconnectsLGAfterFastRetriesAreExhausted() async throws {
         let recoveryClock = ImmediateRecoveryClock()
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys], clock: recoveryClock)
@@ -568,11 +614,12 @@ final class ConnectionManagerTests: XCTestCase {
     }
 
     private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities,
-                             clock: any ConnectionClock = ImmediateRecoveryClock(), defaults: UserDefaults? = nil) async throws
+                             clock: any ConnectionClock = ImmediateRecoveryClock(), defaults: UserDefaults? = nil,
+                             wakeAddress: MACAddress? = nil) async throws
         -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
         let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),
                                           name: "TV", endpoint: TVEndpoint(host: "tv.local", port: 3001),
-                                          capabilities: capabilities)
+                                          capabilities: capabilities, wakeAddress: wakeAddress)
         let driver = LiveFixtureDriver()
         let credentials = MemoryCredentialStore()
         let manager = TVRemoteCore.ConnectionManager(
