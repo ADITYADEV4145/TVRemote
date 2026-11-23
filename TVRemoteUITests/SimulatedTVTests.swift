@@ -4,6 +4,10 @@ final class SimulatedTVTests: XCTestCase {
     private struct Status: Decodable {
         let key_count: Int
         let pairing_code: String?
+        let channel: String?
+        let input: String?
+        let app: String
+        let text: String
     }
 
     @MainActor func testRoku() async throws { try await exercise("roku", port: 8060) }
@@ -95,6 +99,87 @@ final class SimulatedTVTests: XCTestCase {
         try await waitForKey(on: brand, after: afterRestart)
         XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 10))
         capture("\(brand)-reconnected")
+
+        switch brand {
+        case "roku":
+            try await verifyInputs(in: app, brand: brand, firstID: "tvinput.hdmi1", secondID: "tvinput.hdmi2")
+        case "lg":
+            let initialChannel = try await status(brand).channel
+            app.buttons["Channel up"].tap()
+            try await waitForStatus(on: brand, "advance the channel") { $0.channel != initialChannel }
+            app.buttons["Channel down"].tap()
+            try await waitForStatus(on: brand, "return to the original channel") { $0.channel == initialChannel }
+            try await verifyInputs(in: app, brand: brand, firstID: "HDMI_1", secondID: "HDMI_2")
+        case "samsung":
+            app.buttons["Home"].tap()
+            try await waitForStatus(on: brand, "open Home") { $0.app == "home" }
+            app.tabBars.buttons["Apps"].tap()
+            let netflix = app.buttons["Netflix, Open on TV"]
+            XCTAssertTrue(netflix.waitForExistence(timeout: 8))
+            XCTAssertTrue(netflix.isEnabled)
+            XCTAssertTrue(netflix.isHittable)
+            netflix.tap()
+            try await waitForStatus(on: brand, "launch the listed Netflix app") { $0.app == "11101200001" }
+            capture("samsung-app-list")
+            app.tabBars.buttons["Remote"].tap()
+            let priorText = try await status(brand).text
+            app.buttons["Keyboard"].tap()
+            let draft = app.descendants(matching: .any)["searchDraft"].firstMatch
+            XCTAssertTrue(draft.waitForExistence(timeout: 5))
+            if try await !samsungAdvertisesKeyboard() {
+                XCTAssertTrue(app.staticTexts["Keyboard unavailable"].exists)
+                XCTAssertFalse(draft.isEnabled)
+                capture("samsung-text-not-advertised")
+                return
+            }
+            draft.tap()
+            draft.typeText("Lab text")
+            app.buttons["Send text"].tap()
+            try await waitForStatus(on: brand, "receive base64 text entry") { $0.text == priorText + "Lab text" }
+            capture("samsung-text-sent")
+        case "google":
+            try await verifyRevokedPairing(in: app, volume: volume)
+        default:
+            XCTFail("Missing feature check for \(brand).")
+        }
+    }
+
+    @MainActor
+    private func verifyInputs(in app: XCUIApplication, brand: String, firstID: String, secondID: String) async throws {
+        app.buttons["Input"].tap()
+        for (label, id) in [("HDMI 1", firstID), ("HDMI 2", secondID)] {
+            let input = app.buttons.containing(.staticText, identifier: label).firstMatch
+            XCTAssertTrue(input.waitForExistence(timeout: 8))
+            input.tap()
+            try await waitForStatus(on: brand, "switch to \(label)") { $0.input == id }
+        }
+        capture("\(brand)-inputs")
+    }
+
+    @MainActor
+    private func verifyRevokedPairing(in app: XCUIApplication, volume: XCUIElement) async throws {
+        try await chaos("revoke", for: "google")
+        XCTAssertTrue(app.staticTexts["Pair again"].waitForExistence(timeout: 20))
+        XCTAssertFalse(volume.isEnabled)
+        app.buttons["Fix connection"].tap()
+        let repair = app.buttons["Pair again"]
+        XCTAssertTrue(repair.waitForExistence(timeout: 5))
+        capture("google-revoked")
+        repair.tap()
+        let codeField = app.textFields["pairingCode"]
+        XCTAssertTrue(codeField.waitForExistence(timeout: 10))
+        let code = try await status("google").pairing_code
+        let pin = try XCTUnwrap(code)
+        codeField.tap()
+        codeField.typeText(pin)
+        app.buttons["Pair TV"].tap()
+        let openRemote = app.buttons["Open remote"]
+        XCTAssertTrue(openRemote.waitForExistence(timeout: 15))
+        openRemote.tap()
+        XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 8))
+        let count = try await status("google").key_count
+        volume.tap()
+        try await waitForKey(on: "google", after: count)
     }
 
     @MainActor
@@ -126,6 +211,17 @@ final class SimulatedTVTests: XCTestCase {
         return try JSONDecoder().decode(Status.self, from: data)
     }
 
+    private func samsungAdvertisesKeyboard() async throws -> Bool {
+        var request = URLRequest(url: URL(string: "http://127.0.0.1:8001/api/v2/")!)
+        request.timeoutInterval = 3
+        let (data, response) = try await URLSession.shared.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let info = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let device = try XCTUnwrap(info["device"] as? [String: Any])
+        let advertised = device["ImeSyncedSupport"]
+        return advertised as? Bool ?? ((advertised as? String)?.lowercased() == "true")
+    }
+
     private func chaos(_ action: String, for brand: String, allow: Bool? = nil) async throws {
         struct Change: Encodable {
             let action: String
@@ -140,11 +236,15 @@ final class SimulatedTVTests: XCTestCase {
     }
 
     private func waitForKey(on brand: String, after count: Int) async throws {
+        try await waitForStatus(on: brand, "receive the remote command") { $0.key_count > count }
+    }
+
+    private func waitForStatus(on brand: String, _ effect: String, until matches: (Status) -> Bool) async throws {
         for _ in 0..<60 {
-            if try await status(brand).key_count > count { return }
+            if try await matches(status(brand)) { return }
             try await Task.sleep(for: .milliseconds(250))
         }
-        XCTFail("The \(brand) simulator did not receive the remote command.")
+        XCTFail("The \(brand) simulator did not \(effect).")
     }
 
     @MainActor
