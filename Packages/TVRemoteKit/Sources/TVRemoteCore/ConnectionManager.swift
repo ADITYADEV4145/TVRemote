@@ -21,6 +21,7 @@ public actor ConnectionManager {
     private var phase: ConnectionState = .idle
     private var activeBrowses = 0
     private var generation = UUID()
+    private var recoveryWakeGeneration = UUID()
     private var driver: (any TVDriver)?
     private var commandInFlight = false
 
@@ -178,6 +179,7 @@ public actor ConnectionManager {
             let token = generation
             try await factory.makeDriver().wake(tv)
             try ensureCurrent(token)
+            recoveryWakeGeneration = UUID()
             guard phase == .asleep || phase == .degraded else { return }
         }
         let token = begin(tv: tv)
@@ -321,8 +323,10 @@ public actor ConnectionManager {
 
         var lastError = initialError
         var foundAsleep = initialError as? TVError == .asleep
-        for delay in retryDelays {
-            try await clock.sleep(for: delay)
+        var wakeGeneration = recoveryWakeGeneration
+        var retry = 0
+        while retry < retryDelays.count {
+            try await clock.sleep(for: retryDelays[retry])
             try ensureCurrent(token)
             do {
                 try await open(currentDevice ?? tv, credential: credential, factory: factory, token: token)
@@ -332,6 +336,12 @@ public actor ConnectionManager {
                 try ensureCurrent(token)
                 if error as? TVError == .asleep { foundAsleep = true }
                 lastError = error
+                if wakeGeneration == recoveryWakeGeneration {
+                    retry += 1
+                } else {
+                    wakeGeneration = recoveryWakeGeneration
+                    retry = 0
+                }
             }
         }
         if foundAsleep { throw TVError.asleep }

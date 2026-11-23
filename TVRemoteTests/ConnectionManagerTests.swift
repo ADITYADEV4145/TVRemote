@@ -25,6 +25,9 @@ private actor ImmediateRecoveryClock: ConnectionClock {
 private actor LiveFixtureDriver: TVDriver {
     nonisolated var state: AsyncStream<TVRemoteCore.ConnectionState> { AsyncStream { $0.finish() } }
     private var online = true
+    private var standby = false
+    private var wakesImmediately = true
+    let standbyProbes = AsyncStream<Void>.makeStream()
     private(set) var wakes = 0
     private(set) var keys: [TVRemoteCore.RemoteKey] = []
     private(set) var launchedApps: [TVRemoteCore.AppID] = []
@@ -40,6 +43,11 @@ private actor LiveFixtureDriver: TVDriver {
 
     func goOffline() { online = false }
     func goOnline() { online = true }
+    func enterSlowStandby() {
+        online = false
+        standby = true
+        wakesImmediately = false
+    }
     func disableChannel() { channelAvailable = false }
     func timeOutNextApproval() { shouldTimeOutApproval = true }
     func holdNextSend() { holdFirstSend = true }
@@ -65,7 +73,13 @@ private actor LiveFixtureDriver: TVDriver {
         }
         return .token("paired")
     }
-    func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws { try requireOnline() }
+    func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws {
+        if !online && standby {
+            standbyProbes.continuation.yield(())
+            throw TVError.asleep
+        }
+        try requireOnline()
+    }
     func send(_ key: TVRemoteCore.RemoteKey) async throws {
         try requireOnline()
         keys.append(key)
@@ -90,7 +104,7 @@ private actor LiveFixtureDriver: TVDriver {
     func search(_ query: String) async throws { throw TVError.notSupported }
     func wake(_ tv: TVRemoteCore.TVDevice) async {
         wakes += 1
-        online = true
+        if wakesImmediately { online = true }
     }
     func keepAlive() async throws { try requireOnline() }
     private func requireOnline() throws { if !online { throw TVError.unreachable } }
@@ -285,6 +299,40 @@ final class ConnectionManagerTests: XCTestCase {
                 XCTAssertEqual(connection.canControl, hasWake, "\(platform)")
             }
         }
+    }
+
+    func testExplicitWakeExtendsRecoveryForSlowStartingRoku() async throws {
+        let clock = MonitorClock()
+        let (_, session, device, driver) = try await liveFixture(platform: .roku, [.remoteKeys, .networkWake], clock: clock)
+        session.lastSelectedID = session.save(device).id
+        await driver.enterSlowStandby()
+
+        let connection = RemoteViewModel(live: session)
+        let restoration = Task { await connection.restoreSelection() }
+        var sleeps = clock.sleeps.stream.makeAsyncIterator()
+        var standbyProbes = driver.standbyProbes.stream.makeAsyncIterator()
+        _ = await standbyProbes.next()
+        for delay: Duration in [.milliseconds(250), .milliseconds(500), .seconds(1)] {
+            let next = await sleeps.next()
+            XCTAssertEqual(next, delay)
+            clock.ticks.continuation.yield(())
+            _ = await standbyProbes.next()
+        }
+        let finalRetry = await sleeps.next()
+        XCTAssertEqual(finalRetry, .seconds(2))
+        await waitForState(.recovering, on: connection)
+        await connection.send(.power)
+        let wakes = await driver.wakes
+        XCTAssertEqual(wakes, 1)
+
+        clock.ticks.continuation.yield(())
+        _ = await standbyProbes.next()
+        await driver.goOnline()
+        clock.ticks.continuation.finish()
+        await restoration.value
+
+        XCTAssertEqual(connection.state, .ready)
+        XCTAssertTrue(connection.canControl)
     }
 
     func testForegroundMonitorReconnectsLGAfterFastRetriesAreExhausted() async throws {
