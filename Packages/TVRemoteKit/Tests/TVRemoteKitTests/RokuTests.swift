@@ -40,7 +40,9 @@ private actor Transcript: HTTPTransport {
 }
 
 @Test func rokuManualProbePairConnectAndCommands() async throws {
-    let transport = Transcript([deviceInfo(), deviceInfo()] + Array(repeating: HTTPResponse(status: 200), count: 8))
+    let command = [deviceInfo(), HTTPResponse(status: 200)]
+    let transport = Transcript([deviceInfo(), deviceInfo()] + command + command + command + command
+        + command + [HTTPResponse(status: 200)] + command + command)
     let driver = RokuECPDriver(http: transport)
     let tv = try await driver.probe(endpoint)
     #expect(tv.id == TVIdentity(platform: .roku, identifier: "roku:abcd"))
@@ -61,11 +63,13 @@ private actor Transcript: HTTPTransport {
     try await driver.search("A+B & C")
 
     let requests = await transport.requests
-    #expect(requests.map(\.method) == [.get, .get] + Array(repeating: .post, count: 8))
+    #expect(requests.map(\.method) == [.get, .get, .get, .post, .get, .post, .get, .post, .get,
+        .post, .get, .post, .post, .get, .post, .get, .post])
     #expect(requests.map { $0.url.absoluteString } == [
-        "/query/device-info", "/query/device-info", "/keypress/Select", "/keypress/VolumeMute",
-        "/keypress/Rev", "/keypress/Lit_3", "/keypress/Lit_%C3%A9", "/keypress/Lit_%2F",
-        "/launch/12%2F3", "/search/browse?keyword=A%2BB%20%26%20C"
+        "/query/device-info", "/query/device-info", "/query/device-info", "/keypress/Select",
+        "/query/device-info", "/keypress/VolumeMute", "/query/device-info", "/keypress/Rev",
+        "/query/device-info", "/keypress/Lit_3", "/query/device-info", "/keypress/Lit_%C3%A9", "/keypress/Lit_%2F",
+        "/query/device-info", "/launch/12%2F3", "/query/device-info", "/search/browse?keyword=A%2BB%20%26%20C"
     ].map { "http://192.0.2.10:8060" + $0 })
 }
 
@@ -106,14 +110,23 @@ private actor Transcript: HTTPTransport {
 }
 
 @Test func rokuSurfacesUnsupportedCommandsAndNetworkControlDisabled() async throws {
-    let transport = Transcript([deviceInfo(), deviceInfo(), HTTPResponse(status: 403)])
+    let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(), HTTPResponse(status: 403)])
     let driver = RokuECPDriver(http: transport)
     let tv = try await driver.probe(endpoint)
     try await driver.connect(tv, .none)
     await #expect(throws: TVError.notSupported) { try await driver.send(.pause) }
     await #expect(throws: TVError.invalidCommand) { try await driver.send(.digit(10)) }
     await #expect(throws: TVError.notSupported) { try await driver.send(.home) }
-    #expect(await transport.requests.count == 3)
+    #expect(await transport.requests.count == 4)
+}
+
+@Test func rokuDoesNotSendACommandToAReplacementAtTheSavedAddress() async throws {
+    let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(id: "roku:other")])
+    let driver = RokuECPDriver(http: transport)
+    let tv = try await driver.probe(endpoint)
+    try await driver.connect(tv, .none)
+    await #expect(throws: TVError.identityMismatch) { try await driver.send(.home) }
+    #expect(await transport.requests.map(\.method) == [.get, .get, .get])
 }
 
 @Test func ssdpRequiresMatchingSourceAndPlatformFingerprint() {

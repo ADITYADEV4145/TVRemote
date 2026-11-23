@@ -63,8 +63,10 @@ public actor RokuECPDriver: TVDriver {
 
     public func send(_ key: RemoteKey) async throws {
         let keys = try Self.ecpKeys(key)
+        guard !keys.isEmpty else { return }
+        let endpoint = try await verifiedEndpoint()
         for code in keys {
-            try await command(path: "/keypress/" + Self.encodeSegment(code))
+            _ = try await request(.post, endpoint: endpoint, path: "/keypress/" + Self.encodeSegment(code))
         }
     }
 
@@ -87,10 +89,16 @@ public actor RokuECPDriver: TVDriver {
     }
 
     public func keepAlive() async throws {
+        _ = try await verifiedEndpoint()
+    }
+
+    private func verifiedEndpoint() async throws -> TVEndpoint {
         guard let connected else { throw TVError.notConnected }
         let found = try await snapshot(connected.endpoint)
+        guard self.connected == connected else { throw TVError.notConnected }
         guard found.device.id == connected.id else { throw TVError.identityMismatch }
         guard !found.asleep else { throw TVError.asleep }
+        return connected.endpoint
     }
 
     private func snapshot(_ endpoint: TVEndpoint) async throws -> (device: TVDevice, asleep: Bool) {
@@ -99,8 +107,8 @@ public actor RokuECPDriver: TVDriver {
     }
 
     private func command(path: String, query: [URLQueryItem] = []) async throws {
-        guard let connected else { throw TVError.notConnected }
-        _ = try await request(.post, endpoint: connected.endpoint, path: path, query: query)
+        let endpoint = try await verifiedEndpoint()
+        _ = try await request(.post, endpoint: endpoint, path: path, query: query)
     }
 
     private func request(
