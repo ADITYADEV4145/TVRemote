@@ -26,7 +26,31 @@ struct RootScreen: View {
     }
 
     var body: some View {
-        tabs
+        TabView(selection: $tab) {
+            NavigationStack(path: $remotePath) {
+                RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 }).toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: RemoteDestination.self) { _ in
+                        DiagnosticsScreen(openRemote: returnToRemote)
+                    }
+            }
+            .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
+
+            NavigationStack {
+                AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
+            }
+            .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
+
+            NavigationStack {
+                DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+            .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
+
+            NavigationStack {
+                SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
+            }
+            .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
+        }
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
         .onAppear {
             if showWelcome && !hasSeenWelcome {
@@ -48,53 +72,6 @@ struct RootScreen: View {
                 }
             }
             .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
-        }
-    }
-
-    @ViewBuilder private var tabs: some View {
-        if #available(iOS 18, *) {
-            TabView(selection: $tab) {
-                SwiftUI.Tab("Remote", systemImage: "square.grid.2x2", value: Tab.remote) { remoteTab }
-                SwiftUI.Tab("Apps", systemImage: "play", value: Tab.apps) { appsTab }
-                SwiftUI.Tab("My TVs", systemImage: "tv", value: Tab.devices) { devicesTab }
-                SwiftUI.Tab("Settings", systemImage: "slider.horizontal.3", value: Tab.settings) { settingsTab }
-            }
-        } else {
-            TabView(selection: $tab) {
-                remoteTab.tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
-                appsTab.tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
-                devicesTab.tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
-                settingsTab.tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
-            }
-        }
-    }
-
-    private var remoteTab: some View {
-        NavigationStack(path: $remotePath) {
-            RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 })
-                .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(for: RemoteDestination.self) { _ in
-                    DiagnosticsScreen(openRemote: returnToRemote)
-                }
-        }
-    }
-
-    private var appsTab: some View {
-        NavigationStack {
-            AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
-        }
-    }
-
-    private var devicesTab: some View {
-        NavigationStack {
-            DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
-                .toolbar(.hidden, for: .navigationBar)
-        }
-    }
-
-    private var settingsTab: some View {
-        NavigationStack {
-            SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
         }
     }
 
