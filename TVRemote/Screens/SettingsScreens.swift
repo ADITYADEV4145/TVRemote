@@ -142,7 +142,7 @@ struct DiagnosticsScreen: View {
         }
         .sheet(isPresented: $editingAddress) {
             NavigationStack {
-                SetupScreen(initialPage: .manual, movedDeviceID: connection.currentDevice?.id) {
+                SetupScreen(initiallyStarted: true, initialPage: .manual, movedDeviceID: connection.currentDevice?.id) {
                     editingAddress = false
                     openRemote()
                 }

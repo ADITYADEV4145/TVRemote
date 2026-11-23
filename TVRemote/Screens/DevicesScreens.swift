@@ -10,7 +10,7 @@ struct SetupScreen: View {
     @State private var page: SetupPage
     @State private var address = ""
     @State private var code = ""
-    private let movedDeviceID: String?
+    @State private var movedDeviceID: String?
     private let initiallyStarted: Bool
     let connected: () -> Void
 
@@ -18,7 +18,7 @@ struct SetupScreen: View {
          connected: @escaping () -> Void) {
         _page = State(initialValue: initialPage ?? (initiallyStarted ? .discovery : .welcome))
         self.initiallyStarted = initiallyStarted
-        self.movedDeviceID = movedDeviceID
+        _movedDeviceID = State(initialValue: movedDeviceID)
         self.connected = connected
     }
 
@@ -59,7 +59,7 @@ struct SetupScreen: View {
             default:
                 SetupStatusContent(page: page, retry: {
                     if page == .approval { connection.retryTVApproval() }
-                    else { chooseAnotherTV() }
+                    else { connection.cancelPairing(); page = .discovery }
                 },
                                    chooseAnother: chooseAnotherTV,
                                    manual: { page = .manual },
@@ -98,6 +98,8 @@ struct SetupScreen: View {
 
     private func chooseAnotherTV() {
         connection.cancelPairing()
+        movedDeviceID = nil
+        code = ""
         page = .discovery
     }
 
@@ -146,9 +148,7 @@ struct SetupScreen: View {
             }
             .buttonStyle(PrimaryActionStyle())
             .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || connection.isConnecting)
-            Button("Choose another TV") {
-                connection.cancelPairing(); code = ""; page = .discovery
-            }
+            Button("Choose another TV", action: chooseAnotherTV)
             .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
         }
     }

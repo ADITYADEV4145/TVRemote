@@ -110,6 +110,7 @@ final class SimulatedTVTests: XCTestCase {
             app.buttons["Channel down"].tap()
             try await waitForStatus(on: brand, "return to the original channel") { $0.channel == initialChannel }
             try await verifyInputs(in: app, brand: brand, firstID: "HDMI_1", secondID: "HDMI_2")
+            try await verifyChooseAnotherTVAfterAddressUpdate(in: app, lgPort: port)
         case "samsung":
             app.buttons["Home"].tap()
             try await waitForStatus(on: brand, "open Home") { $0.app == "home" }
@@ -191,16 +192,54 @@ final class SimulatedTVTests: XCTestCase {
     }
 
     @MainActor
+    private func verifyChooseAnotherTVAfterAddressUpdate(in app: XCUIApplication, lgPort: Int) async throws {
+        app.buttons["Close"].tap()
+        try await chaos("approval", for: "lg", allow: false)
+        try await chaos("revoke", for: "lg")
+        XCTAssertTrue(app.staticTexts["Pair again"].waitForExistence(timeout: 20))
+        app.buttons["Fix connection"].tap()
+        let update = app.buttons["Update TV address"]
+        XCTAssertTrue(update.waitForExistence(timeout: 5))
+        update.tap()
+        XCTAssertTrue(app.staticTexts["Update TV address"].waitForExistence(timeout: 5))
+        submitAddress(lgPort, in: app)
+        let declined = app.staticTexts["The TV declined the pairing request."].waitForExistence(timeout: 8)
+        try await chaos("approval", for: "lg", allow: true)
+        XCTAssertTrue(declined)
+        app.buttons["Choose another TV"].tap()
+        XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
+        enterAddress(8060, in: app)
+        let openRemote = app.buttons["Open remote"]
+        let foundRoku = openRemote.waitForExistence(timeout: 10)
+        capture("lg-address-update-choose-roku")
+        XCTAssertTrue(foundRoku, "A different TV’s address should work after choosing another TV. Still updating: \(app.staticTexts["Update TV address"].exists).")
+        openRemote.tap()
+        XCTAssertTrue(app.staticTexts["Lab Roku"].waitForExistence(timeout: 5))
+        let count = try await status("roku").key_count
+        app.buttons["Volume up"].tap()
+        try await waitForKey(on: "roku", after: count)
+    }
+
+    @MainActor
     private func enterAddress(_ port: Int, in app: XCUIApplication) {
         let manual = app.buttons["Enter IP address"]
         manual.tap()
         if !app.textFields.firstMatch.exists { manual.tap() }
+        submitAddress(port, in: app)
+    }
+
+    @MainActor
+    private func submitAddress(_ port: Int, in app: XCUIApplication) {
         let address = app.textFields.firstMatch
         XCTAssertTrue(address.waitForExistence(timeout: 5))
         address.tap()
-        if address.value as? String != "127.0.0.1:\(port)" {
-            address.typeText("127.0.0.1:\(port)")
+        let entered = address.value as? String
+        let target = "127.0.0.1:\(port)"
+        if entered != target {
+            let deleteCount = entered == address.placeholderValue ? 0 : (entered?.count ?? 0)
+            address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: deleteCount) + target)
         }
+        XCTAssertEqual(address.value as? String, target)
         app.buttons["Find TV"].tap()
     }
 
