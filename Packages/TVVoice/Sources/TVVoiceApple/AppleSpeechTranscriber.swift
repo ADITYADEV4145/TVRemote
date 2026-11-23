@@ -37,7 +37,7 @@ public final class AppleSpeechTranscriber: SpeechTranscriber {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+            try session.setCategory(.record, mode: .measurement)
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             throw SpeechTranscriberError.audioUnavailable
