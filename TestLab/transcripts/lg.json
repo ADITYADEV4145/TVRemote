@@ -1,0 +1,223 @@
+{
+  "platform": "lg",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "sent": {
+        "type": "register",
+        "id": "register",
+        "payload": {
+          "pairingType": "PROMPT"
+        }
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "register",
+        "payload": {
+          "returnValue": true,
+          "pairingType": "PROMPT"
+        }
+      }
+    },
+    {
+      "received": {
+        "type": "registered",
+        "id": "register",
+        "payload": {
+          "client-key": "<client-key>"
+        }
+      }
+    },
+    {
+      "sent": {
+        "id": "vol",
+        "type": "request",
+        "uri": "ssap://audio/getVolume"
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "vol",
+        "payload": {
+          "returnValue": true,
+          "volume": 25,
+          "muted": false,
+          "volumeStatus": {
+            "volume": 25,
+            "muteStatus": false
+          }
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "channels",
+        "uri": "ssap://tv/getChannelList",
+        "payload": {}
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "channels",
+        "payload": {
+          "returnValue": true,
+          "channelList": [
+            {
+              "channelId": "lab-dtv-2-1",
+              "channelNumber": "2-1",
+              "channelName": "Lab News"
+            },
+            {
+              "channelId": "lab-dtv-4-1",
+              "channelNumber": "4-1",
+              "channelName": "Lab Sports"
+            },
+            {
+              "channelId": "lab-dtv-7-1",
+              "channelNumber": "7-1",
+              "channelName": "Lab Movies"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "up",
+        "uri": "ssap://tv/channelUp",
+        "payload": {}
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "up",
+        "payload": {
+          "returnValue": true
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "current-channel",
+        "uri": "ssap://tv/getCurrentChannel",
+        "payload": {}
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "current-channel",
+        "payload": {
+          "returnValue": true,
+          "channelId": "lab-dtv-4-1",
+          "channelNumber": "4-1",
+          "channelName": "Lab Sports"
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "down",
+        "uri": "ssap://tv/channelDown",
+        "payload": {}
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "down",
+        "payload": {
+          "returnValue": true
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "inputs",
+        "uri": "ssap://tv/getExternalInputList",
+        "payload": {}
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "inputs",
+        "payload": {
+          "returnValue": true,
+          "devices": [
+            {
+              "id": "HDMI_1",
+              "label": "HDMI 1",
+              "appId": "com.webos.app.hdmi1",
+              "connected": true,
+              "port": 1
+            },
+            {
+              "id": "HDMI_2",
+              "label": "HDMI 2",
+              "appId": "com.webos.app.hdmi2",
+              "connected": true,
+              "port": 2
+            },
+            {
+              "id": "HDMI_3",
+              "label": "HDMI 3",
+              "appId": "com.webos.app.hdmi3",
+              "connected": true,
+              "port": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "type": "request",
+        "id": "switch",
+        "uri": "ssap://tv/switchInput",
+        "payload": {
+          "inputId": "HDMI_1"
+        }
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "switch",
+        "payload": {
+          "returnValue": true
+        }
+      }
+    },
+    {
+      "sent": {
+        "id": "pointer",
+        "type": "request",
+        "uri": "ssap://com.webos.service.networkinput/getPointerInputSocket"
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "pointer",
+        "payload": {
+          "returnValue": true,
+          "socketPath": "ws://<host>/resources/<ticket>.sock"
+        }
+      }
+    },
+    {
+      "pointer_sent": "type:button\nname:LEFT\n\n"
+    }
+  ]
+}
