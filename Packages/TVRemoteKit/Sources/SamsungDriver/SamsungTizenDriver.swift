@@ -67,7 +67,7 @@ public actor SamsungTizenDriver: TVDriver {
             guard live.id == tv.id else { throw TVError.identityMismatch }
             let socket = try await open(live, token: token, trust: certificate.map(TLSPeerTrust.pinned) ?? .system)
             do {
-                _ = try await authorize(socket, timeout: .seconds(3))
+                _ = try await authorize(socket, timeout: .seconds(5))
             } catch {
                 await socket.close()
                 throw error
