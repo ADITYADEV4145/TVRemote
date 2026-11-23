@@ -104,16 +104,19 @@ enum AppleDiscovery {
         }
     }
 
-    static func scanRokuSubnet(into output: AsyncStream<DiscoveryCandidate>.Continuation) async {
+    static func scanSubnet(
+        platform: TVPlatform, port: UInt16, into output: AsyncStream<DiscoveryCandidate>.Continuation
+    ) async {
         guard let addresses = localSubnet() else { return }
+        guard let controlPort = NWEndpoint.Port(rawValue: port) else { return }
         await withTaskGroup(of: Void.self) { group in
             for (index, host) in addresses.enumerated() {
                 if Task.isCancelled { break }
                 if index >= 16 { _ = await group.next() }
-                let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: 8060)
+                let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: controlPort)
                 group.addTask {
                     if let reachable = await reachableEndpoint(endpoint, timeout: .milliseconds(300)) {
-                        output.yield(DiscoveryCandidate(platform: .roku, endpoint: reachable))
+                        output.yield(DiscoveryCandidate(platform: platform, endpoint: reachable))
                     }
                 }
             }

@@ -17,7 +17,7 @@ final class LiveTVSession {
         self.defaults = defaults
         self.credentials = credentials
         manager = TVRemoteKit.makeManager(
-            discovery: LocalDiscoverySource(enableSSDP: true, enableSubnetProbe: true),
+            discovery: LocalDiscoverySource(enableSubnetProbe: true),
             credentials: credentials
         )
         for device in stored { known[Self.id(device)] = device }

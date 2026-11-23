@@ -24,11 +24,17 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     public nonisolated func discover() -> AsyncStream<TVDevice> {
-        discoverSocketDevices(using: discovery, platform: .lg, probe: probe)
+        discoverSocketDevices(using: discovery, platform: .lg) { endpoint in
+            try await self.probe(endpoint, requireHello: true)
+        }
     }
 
     public func probe(_ endpoint: TVEndpoint) async throws -> TVDevice {
-        let (live, socket, _) = try await open(endpoint)
+        try await probe(endpoint, requireHello: false)
+    }
+
+    private func probe(_ endpoint: TVEndpoint, requireHello: Bool) async throws -> TVDevice {
+        let (live, socket, _) = try await open(endpoint, requireHello: requireHello)
         await socket.close()
         return live
     }
@@ -157,7 +163,7 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     private func open(
-        _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil
+        _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil, requireHello: Bool = false
     ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         let ports: [UInt16] = credentialed ? [certificate == nil ? 3000 : 3001]
             : (endpoint.port == 3000 ? [3000, 3001] : [3001])
@@ -167,7 +173,8 @@ public actor LGWebOSDriver: TVDriver {
             do {
                 let url = try socketURL(host: endpoint.host, port: port, scheme: secure ? "wss" : "ws")
                 let policy: TLSPeerTrust = certificate.map(TLSPeerTrust.pinned) ?? (secure ? .pairing : .system)
-                return try await identify(endpoint: TVEndpoint(host: endpoint.host, port: port), url: url, trust: policy)
+                return try await identify(endpoint: TVEndpoint(host: endpoint.host, port: port), url: url,
+                                          trust: policy, requireHello: requireHello)
             } catch {
                 if error is CancellationError || error as? TVError == .identityMismatch { throw error }
                 last = error
@@ -177,7 +184,7 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     private func identify(
-        endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust
+        endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust, requireHello: Bool
     ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         var socket = try await sockets.open(url, trust: trust)
         var uuid: String?
@@ -196,6 +203,7 @@ public actor LGWebOSDriver: TVDriver {
                 }
                 name = payload["deviceName"].string ?? name
             case "error":
+                if requireHello { throw TVError.invalidResponse }
                 break
             default:
                 throw TVError.invalidResponse
@@ -203,7 +211,7 @@ public actor LGWebOSDriver: TVDriver {
         } catch {
             await socket.close()
             try Task.checkCancellation()
-            guard endpoint.port == 3001 else {
+            guard !requireHello, endpoint.port == 3001 else {
                 if error is CancellationError { throw TVError.unreachable }
                 throw error
             }

@@ -273,6 +273,21 @@ private struct SocketDiscovery: DiscoverySource {
     #expect(await sockets.attempts.map { $0.url.port } == [3001, 3001, 3000, 3000])
 }
 
+@Test func lgDiscoveryVerifiesWebOSHelloOnSecureSubnetPort() async throws {
+    let port = try #require(LocalDiscoverySource.subnetProbePorts[.lg])
+    #expect(port == 3001)
+    let discovery = SocketDiscovery(endpoint: TVEndpoint(host: "tv.local", port: port))
+    let unrelated = SocketTranscript([#"{"id":"hello","type":"error"}"#])
+    let webOS = SocketTranscript([#"{"id":"hello","type":"hello","payload":{"deviceUUID":"tv-1"}}"#])
+    let sockets = SocketScript([.success(unrelated), .success(webOS)])
+    let driver = LGWebOSDriver(sockets: sockets, discovery: discovery)
+    var devices: [TVDevice] = []
+    for await device in driver.discover() { devices.append(device) }
+    #expect(devices.map(\.id.identifier) == ["tv-1"])
+    #expect(await unrelated.closed)
+    #expect(await webOS.closed)
+}
+
 @Test func lgRejectsReplacementIdentityBeforeSendingClientKey() async throws {
     let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"replacement"}}"#
     let control = SocketTranscript([identity])

@@ -15,6 +15,8 @@ public struct LocalDiscoverySource: DiscoverySource {
         .samsung: ["_samsungmsf._tcp"]
     ]
 
+    package static let subnetProbePorts: [TVPlatform: UInt16] = [.roku: 8060, .lg: 3001]
+
     public func browse(for platform: TVPlatform) -> AsyncStream<DiscoveryCandidate> {
         #if canImport(Network) && canImport(Darwin)
         AsyncStream { continuation in
@@ -30,9 +32,9 @@ public struct LocalDiscoverySource: DiscoverySource {
                             await AppleDiscovery.ssdp(platform: platform, into: continuation)
                         }
                     }
-                    if enableSubnetProbe, platform == .roku {
+                    if enableSubnetProbe, let port = Self.subnetProbePorts[platform] {
                         group.addTask {
-                            await AppleDiscovery.scanRokuSubnet(into: continuation)
+                            await AppleDiscovery.scanSubnet(platform: platform, port: port, into: continuation)
                         }
                     }
                 }
