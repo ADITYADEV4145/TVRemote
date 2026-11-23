@@ -2,7 +2,7 @@ import Foundation
 
 enum TextNormalizer {
     /// Lowercased words with punctuation removed. "Disney+" becomes
-    /// ["disney", "plus"]; "7.1" and "x3" stay one word.
+    /// ["disney", "plus"]; "7.1", "7-1" and "x3" stay one word.
     static func words(_ text: String) -> [String] {
         var s = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US"))
         s = s.replacingOccurrences(of: "&", with: " and ")
@@ -19,7 +19,7 @@ enum TextNormalizer {
             } else if c == ".", i > 0, i + 1 < chars.count, chars[i - 1].isNumber, chars[i + 1].isNumber {
                 out.append(c)
             } else if c == "-", i > 0, i + 1 < chars.count, chars[i - 1].isNumber, chars[i + 1].isNumber {
-                out.append(" dash ")
+                out.append(c)
             } else {
                 out.append(" ")
             }
@@ -124,7 +124,10 @@ enum NumberWords {
     /// Parses a channel number such as "7", "7.1", "seven point one" or "7 dash 1".
     static func channel(_ words: ArraySlice<String>) -> String? {
         guard let first = words.first else { return nil }
-        if first.contains("."), first.split(separator: ".").allSatisfy({ Int($0) != nil }) { return first }
+        if first.contains(where: { $0 == "." || $0 == "-" }) {
+            let parts = first.split(whereSeparator: { $0 == "." || $0 == "-" })
+            return parts.count == 2 && parts.allSatisfy({ Int($0) != nil }) ? parts.joined(separator: ".") : nil
+        }
         guard let major = parse(words, allowHomophones: true) else { return nil }
         let rest = words.dropFirst(major.count)
         if let sep = rest.first, ["point", "dot", "dash"].contains(sep),
