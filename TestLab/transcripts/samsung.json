@@ -1,0 +1,142 @@
+{
+  "platform": "samsung",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "uuid:lab-samsung-020000000003",
+          "name": "Lab Samsung",
+          "type": "Samsung SmartTV",
+          "version": "2.0.25",
+          "uri": "https://<host>/api/v2/",
+          "isSupport": "{\"ImeSyncedSupport\":\"true\",\"TokenAuthSupport\":\"true\"}",
+          "device": {
+            "name": "Lab Samsung",
+            "modelName": "Tizen Simulator",
+            "wifiMac": "02:00:00:00:00:03",
+            "OS": "Tizen",
+            "PowerState": "on",
+            "ImeSyncedSupport": "true",
+            "TokenAuthSupport": "true"
+          }
+        }
+      }
+    },
+    {
+      "connect": "/api/v2/channels/samsung.remote.control",
+      "query": {
+        "name": "Rml4dHVyZSBjbGllbnQ="
+      }
+    },
+    {
+      "received": {
+        "event": "ms.channel.connect",
+        "data": {
+          "id": "lab-samsung",
+          "token": "<token>",
+          "clients": [
+            {
+              "id": "lab-samsung",
+              "deviceName": "Rml4dHVyZSBjbGllbnQ=",
+              "isHost": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Click",
+          "DataOfCmd": "KEY_VOLUP",
+          "Option": "false",
+          "TypeOfRemote": "SendRemoteKey"
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Click",
+          "DataOfCmd": "KEY_INVALID",
+          "Option": "false",
+          "TypeOfRemote": "SendRemoteKey"
+        }
+      }
+    },
+    {
+      "received": {
+        "event": "ms.error",
+        "data": {
+          "message": "unsupported command"
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.channel.emit",
+        "params": {
+          "event": "ed.installedApp.get",
+          "to": "host"
+        }
+      }
+    },
+    {
+      "received": {
+        "event": "ed.installedApp.get",
+        "data": {
+          "data": [
+            {
+              "appId": "11101200001",
+              "name": "Netflix",
+              "app_type": 2
+            },
+            {
+              "appId": "111299001912",
+              "name": "YouTube",
+              "app_type": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Y2Fmw6k=",
+          "DataOfCmd": "base64",
+          "TypeOfRemote": "SendInputString"
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "TypeOfRemote": "SendInputEnd"
+        }
+      }
+    },
+    {
+      "connect": "/api/v2/channels/samsung.remote.control",
+      "query": {
+        "name": "Rml4dHVyZSBjbGllbnQ=",
+        "token": "wrong-token"
+      }
+    },
+    {
+      "received": {
+        "event": "ms.channel.unauthorized"
+      }
+    }
+  ]
+}
