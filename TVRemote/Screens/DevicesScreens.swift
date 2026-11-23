@@ -242,7 +242,7 @@ struct TVDetailScreen: View {
                 DetailRow(icon: "network", title: "TV address", detail: device.address)
                 DetailRow(icon: "hand.point.up.left", title: "Touchpad", detail: device.supportsPointer ? "Available with this driver" : "Not supported")
             }
-            NavigationLink("Connection details") { ConnectionDetailsScreen() }.buttonStyle(SecondaryActionStyle())
+            NavigationLink("Connection details") { ConnectionDetailsScreen(device: device) }.buttonStyle(SecondaryActionStyle())
             NavigationLink("Forget this TV") { ForgetTVScreen(device: device) }.buttonStyle(SecondaryActionStyle(destructive: true))
             SupportingCopy(title: "On this phone only", detail: "Forgetting removes this app’s pairing. It does not change TV apps or settings.")
         }

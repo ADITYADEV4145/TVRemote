@@ -120,26 +120,36 @@ struct DiagnosticsScreen: View {
 
 struct ConnectionDetailsScreen: View {
     @Environment(ConnectionManager.self) private var connection
+    var device: TVDevice? = nil
+
+    private var target: TVDevice? { device ?? connection.currentDevice }
+    private var selected: Bool { target != nil && target?.id == connection.currentDevice?.id }
+    private var commands: [ConnectionManager.RecentCommand] {
+        guard let target else { return [] }
+        return connection.recentCommands.filter { $0.deviceID == target.id }
+    }
 
     var body: some View {
         ScreenBody {
             ScreenHeading("", "Connection details", "Evidence, not guesses.")
             Panel {
-                DetailRow(icon: "tv", title: "TV", detail: connection.currentDevice?.name ?? "None selected")
-                DetailRow(icon: "circle.dotted", title: "Driver state", detail: connection.state.rawValue)
+                DetailRow(icon: "tv", title: "TV", detail: target?.name ?? "None selected")
+                DetailRow(icon: "circle.dotted", title: "Driver state", detail: selected ? connection.state.rawValue : "Not selected")
                 DetailRow(icon: "testtube.2", title: "Mode", detail: connection.isDemo ? "In-process simulation" : "Live driver")
                 DetailRow(icon: "clock", title: "Latency", detail: "Not measured")
             }
             Text("Recent commands").font(.title3.weight(.semibold))
             Panel {
-                if connection.recentCommands.isEmpty { Text("No commands sent yet.").foregroundStyle(RemoteTheme.muted) }
-                ForEach(connection.recentCommands) { command in
+                if commands.isEmpty { Text("No commands sent to this TV yet.").foregroundStyle(RemoteTheme.muted) }
+                ForEach(commands) { command in
                     DetailRow(icon: "arrow.up.right", title: command.title,
                               detail: "Driver acknowledged · \(command.timestamp.formatted(.dateTime.hour().minute().second()))")
                 }
             }
             SupportingCopy(title: "What acknowledgment means", detail: "The driver accepted the action. It does not prove that the TV visibly changed.")
-            NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
+            if selected {
+                NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
+            }
         }.modifier(TaskSurface())
     }
 }

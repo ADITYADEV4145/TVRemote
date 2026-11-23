@@ -9,6 +9,7 @@ final class ConnectionManager {
         let id = UUID()
         let timestamp = Date()
         let title: String
+        let deviceID: TVDevice.ID?
     }
 
     private(set) var state: ConnectionState = .idle
@@ -203,10 +204,11 @@ final class ConnectionManager {
     private func perform(_ command: String, feedback message: String? = nil,
                          action: () async throws -> Void) async {
         let generation = messageGeneration
+        let deviceID = currentDevice?.id
         error = nil
         do {
             try await action()
-            recentCommands.insert(RecentCommand(title: command), at: 0)
+            recentCommands.insert(RecentCommand(title: command, deviceID: deviceID), at: 0)
             if recentCommands.count > 20 { recentCommands.removeLast() }
             if messageGeneration == generation { feedback = message }
         } catch {
