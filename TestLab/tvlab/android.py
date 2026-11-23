@@ -114,6 +114,9 @@ class TLSStream:
                 self.conn.bio_write(incoming)
             except SSL.WantWriteError:
                 await self.flush()
+            except SSL.Error:
+                await self.flush()
+                raise
             else:
                 await self.flush()
                 return result
@@ -293,8 +296,16 @@ async def serve(tv, host, port, scheme, cert, key, power_off):
     context.set_min_proto_version(SSL.TLS1_2_VERSION)
     context.use_certificate(cert)
     context.use_privatekey(key)
-    # The peer proves possession in TLS; trust is established by the Polo code.
-    context.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, lambda *_: True)
+    def verify_peer(_connection, certificate, _error, depth, _verified):
+        if scheme == "pair" or depth:
+            return True
+        fingerprint = certificate.to_cryptography().fingerprint(hashes.SHA256())
+        if fingerprint in tv.credentials:
+            return True
+        tv.events.append({"control": "unpaired_certificate"})
+        return False
+
+    context.set_verify(SSL.VERIFY_PEER | SSL.VERIFY_FAIL_IF_NO_PEER_CERT, verify_peer)
 
     async def connect(reader, writer):
         async def close():
@@ -311,8 +322,6 @@ async def serve(tv, host, port, scheme, cert, key, power_off):
                 await asyncio.wait_for(pair(tv, link, client, cert), 120)
             elif client.fingerprint(hashes.SHA256()) in tv.credentials:
                 await control(tv, link, power_off)
-            else:
-                tv.events.append({"control": "unpaired_certificate"})
         except (SSL.Error, EOFError, OSError, TimeoutError, KeyError, TypeError, ValueError) as exc:
             LOGGER.debug("Google TV %s connection closed: %s", scheme, exc)
         finally:

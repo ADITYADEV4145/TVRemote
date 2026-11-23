@@ -13,6 +13,10 @@ KEY_UP KEY_DOWN KEY_LEFT KEY_RIGHT KEY_ENTER KEY_VOLUP KEY_VOLDOWN KEY_MUTE KEY_
 KEY_PLAY KEY_PAUSE KEY_STOP KEY_REWIND KEY_FF KEY_PLAYPAUSE KEY_GUIDE KEY_CH_LIST
 KEY_RED KEY_GREEN KEY_YELLOW KEY_BLUE KEY_TOOLS KEY_PRECH KEY_SEARCH KEY_HDMI KEY_TV
 KEY_CONTENTS KEY_SMART KEY_PANEL_CH_UP KEY_PANEL_CH_DOWN""".split()) | {f"KEY_{i}" for i in range(10)}
+SAMSUNG_APPS = [
+    {"appId": "11101200001", "name": "Netflix", "app_type": 2},
+    {"appId": "111299001912", "name": "YouTube", "app_type": 2},
+]
 LG_KEYS = set("""UP DOWN LEFT RIGHT ENTER BACK HOME MENU EXIT INFO DASH SAP CC GUIDE
 VOLUMEUP VOLUMEDOWN MUTE CHANNELUP CHANNELDOWN PLAY PAUSE STOP REWIND FASTFORWARD
 RED GREEN YELLOW BLUE POWER LIST LIVE TV INPUT""".split()) | {str(i) for i in range(10)}
@@ -103,12 +107,17 @@ def samsung_routes(app, tv):
                     message = json.loads(msg.data)
                     params = message["params"]
                     if message["method"] == "ms.remote.control":
-                        key = params["DataOfCmd"]
-                        if params["TypeOfRemote"] != "SendRemoteKey" or key not in SAMSUNG_KEYS:
+                        samsung_remote_control(tv, params)
+                    elif message["method"] == "ms.channel.emit":
+                        event = params["event"]
+                        if event == "ed.installedApp.get":
+                            await ws.send_json({"event": event, "data": {"data": SAMSUNG_APPS}})
+                        elif event == "ed.apps.launch":
+                            tv.launch(str(params["data"]["appId"]))
+                        elif event == "custom.remote.textReceived":
+                            tv.text_entry_active = True
+                        else:
                             raise ValueError
-                        tv.key(key, {"Click": "press", "Press": "down", "Release": "up"}[params["Cmd"]])
-                    elif (message["method"], params["event"]) == ("ms.channel.emit", "ed.apps.launch"):
-                        tv.launch(str(params["data"]["appId"]))
                     else:
                         raise ValueError
                 except (KeyError, TypeError, ValueError):
@@ -124,11 +133,36 @@ def samsung_routes(app, tv):
                     web.post("/api/v2/applications/{app_id}", applications)])
 
 
+def samsung_remote_control(tv, params):
+    kind = params["TypeOfRemote"]
+    if kind == "SendRemoteKey" and params["DataOfCmd"] in SAMSUNG_KEYS:
+        tv.key(params["DataOfCmd"], {"Click": "press", "Press": "down", "Release": "up"}[params["Cmd"]])
+    elif kind == "SendInputString" and params["DataOfCmd"] == "base64":
+        text = base64.b64decode(params["Cmd"], validate=True).decode("utf-8")
+        tv.text += text
+        tv.text_entry_active = True
+    elif kind == "SendInputEnd":
+        tv.text_entry_active = False
+    else:
+        raise ValueError
+
+
 LG_APPS = [{"id": "netflix", "title": "Netflix"}, {"id": "youtube.leanback.v4", "title": "YouTube"}]
+LG_INPUTS = {
+    f"HDMI_{port}": {"id": f"HDMI_{port}", "label": f"HDMI {port}",
+                     "appId": f"com.webos.app.hdmi{port}", "connected": True, "port": port}
+    for port in range(1, 4)
+}
+LG_CHANNELS = {
+    number: {"channelId": f"lab-dtv-{number}", "channelNumber": number, "channelName": name}
+    for number, name in [("2-1", "Lab News"), ("4-1", "Lab Sports"), ("7-1", "Lab Movies")]
+}
 
 
 def lg_routes(app, tv):
     tickets = set()
+    if tv.channel is None:
+        tv.channel = next(iter(LG_CHANNELS))
 
     async def device(request):
         return description(tv, "Lab LG webOS", "LG Electronics",
@@ -204,7 +238,7 @@ def lg_routes(app, tv):
                     break
                 data = dict(line.split(":", 1) for line in msg.data.splitlines() if ":" in line)
                 if data.get("type") == "button" and data.get("name") in LG_KEYS:
-                    tv.key(data["name"])
+                    lg_button(tv, data["name"])
                 elif data.get("type") in ("click", "move", "scroll"):
                     tv.events.append({"pointer": data})
                 if tv.sleeping:
@@ -217,6 +251,15 @@ def lg_routes(app, tv):
                     web.get("/resources/{ticket}.sock", pointer)])
 
 
+def lg_button(tv, key):
+    tv.key(key)
+    if key in ("CHANNELUP", "CHANNELDOWN"):
+        channels = list(LG_CHANNELS)
+        step = 1 if key == "CHANNELUP" else -1
+        tv.channel = channels[(channels.index(tv.channel) + step) % len(channels)]
+        tv.events.append({"channel": tv.channel})
+
+
 def lg_request(tv, uri, payload):
     if uri == "ssap://audio/getVolume":
         return {"volume": tv.volume, "muted": tv.muted,
@@ -227,6 +270,19 @@ def lg_request(tv, uri, payload):
         tv.key("VOLUMEUP" if uri.endswith("Up") else "VOLUMEDOWN")
     elif uri == "ssap://audio/setMute":
         tv.muted = bool(payload["mute"])
+    elif uri in ("ssap://tv/channelUp", "ssap://tv/channelDown"):
+        lg_button(tv, "CHANNELUP" if uri.endswith("Up") else "CHANNELDOWN")
+    elif uri == "ssap://tv/getCurrentChannel":
+        return LG_CHANNELS[tv.channel]
+    elif uri == "ssap://tv/getChannelList":
+        return {"channelList": list(LG_CHANNELS.values())}
+    elif uri == "ssap://tv/getExternalInputList":
+        return {"devices": list(LG_INPUTS.values())}
+    elif uri == "ssap://tv/switchInput":
+        input_id = payload.get("inputId")
+        if not isinstance(input_id, str) or input_id not in LG_INPUTS:
+            raise ValueError("404 input not found")
+        tv.select_input(input_id, LG_INPUTS[input_id]["appId"])
     elif uri == "ssap://system.launcher/launch":
         tv.launch(payload["id"])
     elif uri == "ssap://com.webos.applicationManager/getForegroundAppInfo":

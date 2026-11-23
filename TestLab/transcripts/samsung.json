@@ -55,6 +55,52 @@
       }
     },
     {
+      "sent": {
+        "method": "ms.channel.emit",
+        "params": {
+          "event": "ed.installedApp.get",
+          "to": "host"
+        }
+      }
+    },
+    {
+      "received": {
+        "event": "ed.installedApp.get",
+        "data": {
+          "data": [
+            {
+              "appId": "11101200001",
+              "name": "Netflix",
+              "app_type": 2
+            },
+            {
+              "appId": "111299001912",
+              "name": "YouTube",
+              "app_type": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Y2Fmw6k=",
+          "DataOfCmd": "base64",
+          "TypeOfRemote": "SendInputString"
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "TypeOfRemote": "SendInputEnd"
+        }
+      }
+    },
+    {
       "connect": "/api/v2/channels/samsung.remote.control",
       "query": {
         "name": "Rml4dHVyZSBjbGllbnQ=",

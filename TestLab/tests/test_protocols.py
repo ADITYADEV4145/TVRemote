@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from aiohttp import ClientConnectionError, ClientSession, ClientTimeout, web
 from androidtvremote2 import AndroidTVRemote
-from androidtvremote2.exceptions import CannotConnect, ConnectionClosed
+from androidtvremote2.exceptions import CannotConnect, ConnectionClosed, InvalidAuth
 from androidtvremote2.polo_pb2 import OuterMessage
 from androidtvremote2.remotemessage_pb2 import RemoteKeyCode
 from cryptography import x509
@@ -87,7 +87,13 @@ async def test_roku_keys_and_endpoints(lab):
                 return response.status
 
         assert (await get("/query/device-info")).findtext("serial-number") == "SIMROKU001"
-        assert (await get("/query/apps")).findtext("app") == "Netflix"
+        assert (await get("/query/device-info")).findtext("is-tv") == "true"
+        catalog = await get("/query/apps")
+        assert catalog.findtext("app") == "Netflix"
+        assert {item.get("id"): item.text for item in catalog.findall("./app[@type='tvin']")} == {
+            "tvinput.hdmi1": "HDMI 1", "tvinput.hdmi2": "HDMI 2", "tvinput.hdmi3": "HDMI 3",
+            "tvinput.hdmi4": "HDMI 4", "tvinput.dtv": "Live TV", "tvinput.cvbs": "AV",
+        }
         keys = sorted(ROKU_KEYS - {"Power", "PowerOff"}) + ["Lit_%E2%9C%93"]
         for key in keys:
             assert await post("/keypress/" + key) == 200
@@ -98,6 +104,15 @@ async def test_roku_keys_and_endpoints(lab):
         assert lab.tvs["roku"].held == set()
         assert await post("/keypress/___bad", raise_for_status=False) == 400
         assert await post("/launch/unknown", raise_for_status=False) == 404
+        assert await post("/launch/tvinput.hdmi2") == 200
+        assert (await get("/query/active-app")).find("app").attrib["id"] == "tvinput.hdmi2"
+        assert lab.tvs["roku"].input == "tvinput.hdmi2"
+        for key, input_id in [
+            ("InputHDMI1", "tvinput.hdmi1"), ("InputTuner", "tvinput.dtv"), ("InputAV1", "tvinput.cvbs"),
+        ]:
+            assert await post(f"/keypress/{key}") == 200
+            assert (await get("/query/active-app")).find("app").attrib["type"] == "tvin"
+            assert lab.tvs["roku"].snapshot()["input"] == input_id
         assert await post("/launch/12?contentID=example&mediaType=movie") == 200
         assert (await get("/query/active-app")).findtext("app") == "Netflix"
         assert await post("/keypress/Play") == 200
@@ -225,6 +240,31 @@ async def test_samsung_tokens_keys_app_and_wake(lab):
         async with client.ws_connect(wss, params=params, ssl=False) as ws:
             assert (await ws.receive_json())["event"] == "ms.channel.connect"
 
+            await ws.send_json({"method": "ms.channel.emit", "params": {
+                "event": "ed.installedApp.get", "to": "host",
+            }})
+            installed = await ws.receive_json()
+            assert installed["event"] == "ed.installedApp.get"
+            assert {"appId": "11101200001", "name": "Netflix", "app_type": 2} in installed["data"]["data"]
+            for sample in ("café ", "東京"):
+                await ws.send_json({"method": "ms.remote.control", "params": {
+                    "TypeOfRemote": "SendInputString", "DataOfCmd": "base64",
+                    "Cmd": base64.b64encode(sample.encode()).decode(),
+                }})
+            await reached(lambda: tv.snapshot()["text"] == "café 東京")
+            assert tv.snapshot()["text_entry_active"]
+            await ws.send_json({"method": "ms.remote.control", "params": {"TypeOfRemote": "SendInputEnd"}})
+            await reached(lambda: not tv.text_entry_active)
+            await ws.send_json({"method": "ms.channel.emit", "params": {
+                "event": "custom.remote.textReceived", "to": "broadcast",
+            }})
+            await reached(lambda: tv.text_entry_active)
+            await ws.send_json({"method": "ms.remote.control", "params": {
+                "TypeOfRemote": "SendInputString", "DataOfCmd": "base64", "Cmd": "!!!",
+            }})
+            assert (await ws.receive_json())["event"] == "ms.error"
+            assert tv.text == "café 東京"
+
             async def press(key, cmd="Click"):
                 await ws.send_json({"method": "ms.remote.control", "params": {
                     "Cmd": cmd, "DataOfCmd": key, "TypeOfRemote": "SendRemoteKey", "Option": "false",
@@ -289,6 +329,27 @@ async def test_lg_ssap_pointer_credentials_and_wake(lab):
                     await pointer.send_str(f"type:button\nname:{key_name}\n\n")
                 await reached(lambda: tv.key_count == len(keys))
                 assert [event["name"] for event in tv.keys] == keys
+                await pointer.send_str("type:button\nname:CHANNELUP\n\n")
+                await reached(lambda: tv.channel == "4-1")
+                await pointer.send_str("type:button\nname:CHANNELDOWN\n\n")
+                await reached(lambda: tv.channel == "2-1")
+            channels = (await call(ws, "tv/getChannelList"))["payload"]["channelList"]
+            assert [channel["channelNumber"] for channel in channels] == ["2-1", "4-1", "7-1"]
+            assert (await call(ws, "tv/channelUp"))["payload"]["returnValue"]
+            assert (await call(ws, "tv/getCurrentChannel"))["payload"]["channelNumber"] == "4-1"
+            assert (await call(ws, "tv/channelDown"))["payload"]["returnValue"]
+            assert tv.snapshot()["channel"] == "2-1"
+            inputs = (await call(ws, "tv/getExternalInputList"))["payload"]["devices"]
+            assert [(item["id"], item["label"]) for item in inputs] == [
+                ("HDMI_1", "HDMI 1"), ("HDMI_2", "HDMI 2"), ("HDMI_3", "HDMI 3"),
+            ]
+            assert (await call(ws, "tv/switchInput", inputId=inputs[1]["id"]))["payload"]["returnValue"]
+            assert tv.snapshot()["input"] == "HDMI_2"
+            assert (await call(ws, "com.webos.applicationManager/getForegroundAppInfo"))["payload"]["appId"] == (
+                "com.webos.app.hdmi2"
+            )
+            assert (await call(ws, "tv/switchInput", inputId="HDMI_99"))["type"] == "error"
+            assert tv.input == "HDMI_2"
             assert (await call(ws, "audio/setVolume", volume=70))["payload"]["returnValue"]
             assert (await call(ws, "audio/getVolume"))["payload"]["volume"] == 70
             await call(ws, "system.launcher/launch", id="netflix")
@@ -322,7 +383,7 @@ async def test_google_reference_pair_launch_ime_keepalive_and_revoke(lab, tmp_pa
     client = google_client(lab, tmp_path)
     await client.async_generate_cert_if_missing()
     try:
-        with pytest.raises((ConnectionClosed, CannotConnect)):
+        with pytest.raises(InvalidAuth):
             await client.async_connect()
         await client.async_start_pairing()
         assert len(tv.code) == 6
@@ -346,8 +407,14 @@ async def test_google_reference_pair_launch_ime_keepalive_and_revoke(lab, tmp_pa
         await lab.apply("google", {"action": "drop"})
         await client.async_connect()
         await lab.apply("google", {"action": "revoke"})
+        with pytest.raises(InvalidAuth) as denied:
+            await client.async_connect()
+        assert isinstance(denied.value.__cause__, ssl.SSLError)
+        assert denied.value.__cause__.reason == "TLSV1_ALERT_UNKNOWN_CA"
+        await lab.apply("google", {"action": "sleep"})
         with pytest.raises((ConnectionClosed, CannotConnect)):
             await client.async_connect()
+        await lab.apply("google", {"action": "wake"})
         await client.async_start_pairing()
         await client.async_finish_pairing(tv.code)
         await client.async_connect()

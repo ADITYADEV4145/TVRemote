@@ -19,7 +19,7 @@
       },
       "response": {
         "status": 200,
-        "body": "<?xml version='1.0' encoding='utf-8'?>\n<apps><app id=\"12\" type=\"appl\" version=\"1.0\">Netflix</app><app id=\"837\" type=\"appl\" version=\"1.0\">YouTube</app></apps>"
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<apps><app id=\"12\" type=\"appl\" version=\"1.0\">Netflix</app><app id=\"837\" type=\"appl\" version=\"1.0\">YouTube</app><app id=\"tvinput.hdmi1\" type=\"tvin\" version=\"1.0.0\">HDMI 1</app><app id=\"tvinput.hdmi2\" type=\"tvin\" version=\"1.0.0\">HDMI 2</app><app id=\"tvinput.hdmi3\" type=\"tvin\" version=\"1.0.0\">HDMI 3</app><app id=\"tvinput.hdmi4\" type=\"tvin\" version=\"1.0.0\">HDMI 4</app><app id=\"tvinput.dtv\" type=\"tvin\" version=\"1.0.0\">Live TV</app><app id=\"tvinput.cvbs\" type=\"tvin\" version=\"1.0.0\">AV</app></apps>"
       }
     },
     {
@@ -49,7 +49,7 @@
       },
       "response": {
         "status": 200,
-        "body": "<?xml version='1.0' encoding='utf-8'?>\n<active-app><app id=\"12\">Netflix</app></active-app>"
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<active-app><app id=\"12\" type=\"appl\" version=\"1.0\">Netflix</app></active-app>"
       }
     },
     {
@@ -70,6 +70,26 @@
       "response": {
         "status": 400,
         "body": "Unknown ECP key"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/launch/tvinput.hdmi1"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/query/active-app"
+      },
+      "response": {
+        "status": 200,
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<active-app><app id=\"tvinput.hdmi1\" type=\"tvin\" version=\"1.0.0\">HDMI 1</app></active-app>"
       }
     }
   ]

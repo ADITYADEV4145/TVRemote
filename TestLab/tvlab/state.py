@@ -10,9 +10,13 @@ class TV:
     mac: str
     sleeping: bool = False
     app: str = "home"
+    input: str | None = None
+    channel: str | None = None
     volume: int = 25
     muted: bool = False
     search: str = ""
+    text: str = ""
+    text_entry_active: bool = False
     approval: bool = True
     token_regression: bool = False
     latency_ms: float = 0
@@ -33,7 +37,9 @@ class TV:
     def snapshot(self):
         return {
             "platform": self.platform, "mac": self.mac, "sleeping": self.sleeping,
-            "app": self.app, "volume": self.volume, "muted": self.muted,
+            "app": self.app, "input": self.input, "channel": self.channel,
+            "volume": self.volume, "muted": self.muted,
+            "text": self.text, "text_entry_active": self.text_entry_active,
             "search": self.search, "approval": self.approval, "drops": self.drops,
             "pairing_code": self.code, "pairing_codes": list(self.pending_codes.values()),
             "keys": list(self.keys), "key_count": self.key_count, "held": sorted(self.held), "media": self.media,
@@ -78,3 +84,8 @@ class TV:
     def launch(self, app):
         self.app = app
         self.events.append({"launch": app})
+
+    def select_input(self, input_id, app_id):
+        self.input = input_id
+        self.app = app_id
+        self.events.append({"select_input": input_id})

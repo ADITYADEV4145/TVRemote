@@ -6,6 +6,15 @@ KEYS = set("""Home Rev Fwd Play Select Left Right Down Up Back InstantReplay Inf
 Search Enter FindRemote ChannelUp ChannelDown VolumeDown VolumeMute VolumeUp PowerOff
 PowerOn Power InputTuner InputHDMI1 InputHDMI2 InputHDMI3 InputHDMI4 InputAV1""".split())
 APPS = {"12": "Netflix", "837": "YouTube"}
+INPUT_KEYS = {
+    **{f"InputHDMI{port}": (f"tvinput.hdmi{port}", f"HDMI {port}") for port in range(1, 5)},
+    "InputTuner": ("tvinput.dtv", "Live TV"),
+    "InputAV1": ("tvinput.cvbs", "AV"),
+}
+CATALOG = {
+    **{app_id: (name, "appl", "1.0") for app_id, name in APPS.items()},
+    **{input_id: (name, "tvin", "1.0.0") for input_id, name in INPUT_KEYS.values()},
+}
 DEVICE_TYPE = "urn:roku-com:device:player:1-0"
 SERVICE_TYPE = "urn:roku-com:service:ecp:1"
 
@@ -23,6 +32,11 @@ def fields(root, values):
     for key, value in values.items():
         SubElement(root, key).text = value
     return root
+
+
+def app_element(root, app_id):
+    name, kind, version = CATALOG[app_id]
+    SubElement(root, "app", id=app_id, type=kind, version=version).text = name
 
 
 def routes(app, tv):
@@ -60,13 +74,16 @@ def routes(app, tv):
 
     async def apps(_):
         root = Element("apps")
-        for app_id, name in APPS.items():
-            SubElement(root, "app", id=app_id, type="appl", version="1.0").text = name
+        for app_id in CATALOG:
+            app_element(root, app_id)
         return xml(root)
 
     async def active(_):
         root = Element("active-app")
-        SubElement(root, "app", id=tv.app if tv.app in APPS else "").text = APPS.get(tv.app, "Roku")
+        if tv.app in CATALOG:
+            app_element(root, tv.app)
+        else:
+            SubElement(root, "app").text = "Roku"
         return xml(root)
 
     async def player(_):
@@ -76,16 +93,24 @@ def routes(app, tv):
         key = request.match_info["key"]
         if key not in KEYS and not (key.startswith("Lit_") and len(key[4:]) == 1):
             raise web.HTTPBadRequest(text="Unknown ECP key")
-        tv.key(key, {"keypress": "press", "keydown": "down", "keyup": "up"}[request.match_info["op"]])
-        if key.startswith("Lit_") and request.match_info["op"] != "keyup":
-            tv.search += key[4:]
+        operation = request.match_info["op"]
+        tv.key(key, {"keypress": "press", "keydown": "down", "keyup": "up"}[operation])
+        if operation != "keyup":
+            if key.startswith("Lit_"):
+                tv.search += key[4:]
+            elif key in INPUT_KEYS:
+                input_id, _ = INPUT_KEYS[key]
+                tv.select_input(input_id, input_id)
         return web.Response()
 
     async def launch(request):
         app_id = request.match_info["app_id"]
-        if app_id not in APPS:
+        if app_id not in CATALOG:
             raise web.HTTPNotFound(text="Unknown app")
-        tv.launch(app_id)
+        if CATALOG[app_id][1] == "tvin":
+            tv.select_input(app_id, app_id)
+        else:
+            tv.launch(app_id)
         if request.query:
             tv.events.append({"launch_parameters": dict(request.query)})
         return web.Response()

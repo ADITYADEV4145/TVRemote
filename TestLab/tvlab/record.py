@@ -5,6 +5,7 @@ from pathlib import Path
 
 from aiohttp import ClientSession
 from androidtvremote2 import AndroidTVRemote
+from androidtvremote2.exceptions import InvalidAuth
 
 from .lab import DEFAULT_PORTS, Lab
 from .soak import url
@@ -31,7 +32,8 @@ async def record_roku(lab, session, trace):
     for method, path in [
         ("GET", "/query/device-info"), ("GET", "/query/apps"), ("POST", "/keypress/VolumeUp"),
         ("POST", "/launch/12"), ("GET", "/query/active-app"), ("POST", "/search/browse?keyword=movie"),
-        ("POST", "/keypress/InvalidKey"),
+        ("POST", "/keypress/InvalidKey"), ("POST", "/launch/tvinput.hdmi1"),
+        ("GET", "/query/active-app"),
     ]:
         async with session.request(method, base + path) as response:
             trace.append({"request": {"method": method, "path": path},
@@ -53,6 +55,20 @@ async def record_samsung(lab, session, trace):
         key = {**key, "params": {**key["params"], "DataOfCmd": "KEY_INVALID"}}
         await ws.send_json(key)
         trace.extend([{"sent": key}, {"received": await ws.receive_json()}])
+        command = {"method": "ms.channel.emit", "params": {"event": "ed.installedApp.get", "to": "host"}}
+        await ws.send_json(command)
+        trace.extend([{"sent": command}, {"received": await ws.receive_json()}])
+        for params_to_send in (
+            {"Cmd": base64.b64encode("café".encode()).decode(), "DataOfCmd": "base64",
+             "TypeOfRemote": "SendInputString"},
+            {"TypeOfRemote": "SendInputEnd"},
+        ):
+            command = {"method": "ms.remote.control", "params": params_to_send}
+            await ws.send_json(command)
+            trace.append({"sent": command})
+        async with asyncio.timeout(2):
+            while lab.tvs["samsung"].text != "café" or lab.tvs["samsung"].text_entry_active:
+                await asyncio.sleep(.005)
     params = {**params, "token": "wrong-token"}
     trace.append({"connect": SAMSUNG_PATH, "query": params})
     async with session.ws_connect(base + SAMSUNG_PATH, params=params, ssl=False) as ws:
@@ -71,6 +87,17 @@ async def record_lg(lab, session, trace):
         command = {"id": "vol", "type": "request", "uri": "ssap://audio/getVolume"}
         await ws.send_json(command)
         trace.extend([{"sent": command}, {"received": await ws.receive_json()}])
+        for ident, uri, payload in (
+            ("channels", "tv/getChannelList", {}),
+            ("up", "tv/channelUp", {}),
+            ("current-channel", "tv/getCurrentChannel", {}),
+            ("down", "tv/channelDown", {}),
+            ("inputs", "tv/getExternalInputList", {}),
+            ("switch", "tv/switchInput", {"inputId": "HDMI_1"}),
+        ):
+            command = {"type": "request", "id": ident, "uri": f"ssap://{uri}", "payload": payload}
+            await ws.send_json(command)
+            trace.extend([{"sent": command}, {"received": await ws.receive_json()}])
         command = {"id": "pointer", "type": "request",
                    "uri": "ssap://com.webos.service.networkinput/getPointerInputSocket"}
         await ws.send_json(command)
@@ -104,6 +131,13 @@ async def record_google(lab, trace):
         async with asyncio.timeout(7):
             while not any("keepalive" in event for event in tv.events):
                 await asyncio.sleep(.02)
+        await lab.apply("google", {"action": "revoke"})
+        try:
+            await client.async_connect()
+        except InvalidAuth as exc:
+            trace.append({"channel": "remote", "tls_alert": exc.__cause__.reason, "client_error": "InvalidAuth"})
+        else:
+            raise RuntimeError("Google TV accepted a revoked certificate")
     finally:
         client.disconnect()
         tv.trace = None
