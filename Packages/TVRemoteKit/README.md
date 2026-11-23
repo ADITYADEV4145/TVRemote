@@ -1,6 +1,6 @@
 # TVRemoteKit
 
-Swift package for local-network TV control (iOS 17+, macOS 14+). This release contains the connection layer and Roku ECP driver. Google TV, Samsung and LG are platform identifiers, not available drivers yet.
+Swift package for local-network TV control (iOS 17+, macOS 14+). This release contains the connection layer, Roku ECP and Google TV Remote v2 drivers. Samsung and LG are platform identifiers, not available drivers yet.
 
 ## App and voice integration
 
@@ -9,7 +9,7 @@ Add the local package at `Packages/TVRemoteKit`, link its `TVRemoteKit` product,
 ```swift
 import TVRemoteKit
 
-let remote = TVRemoteKit.makeRokuManager(
+let remote = TVRemoteKit.makeManager(
     discovery: LocalDiscoverySource(enableSubnetProbe: true)
 )
 
@@ -26,6 +26,12 @@ try await remote.launch(AppID(rawValue: "12"))
 try await remote.search("Severance")
 ```
 
+For Google TV, declare `_androidtvremote2._tcp` in `NSBonjourServices` and use the discovered device. With manual IP, call `probe(TVEndpoint(host: address, port: 6466), platform: .googleTV)`. Probing and on-TV pairing use TLS port 6467; commands and server-driven keepalives use Remote v2 over TLS on port 6466.
+
+`pair(_:prompt:)` requests a six-character **hexadecimal** code. The app should accept 0–9 and A–F (case insensitive) and pass the typed code back unchanged. The package validates the TV's challenge, stores the generated client RSA identity and the TV's pinned public key in the configured credential store, and reconnects with the stored identity. App code must not read or log the credential.
+
+Google TV supports navigation, volume, playback, and power key commands. For `launch(_:)`, pass a TV-supported app-link URI such as an HTTPS deep link; a bare Android package name is not a link. The driver negotiates key and app-link support with the TV. Free-form text, search, and waking an unreachable device are not supported.
+
 - **Setup and pairing:** `discover()` is a cancellable, finite `AsyncStream<TVDevice>`; cancellation stops the browse. `probe(_:platform:)` checks a manually entered endpoint and obtains its stable identity; an open port alone is not a TV. `pair(_:prompt:)` emits `.enterCode(length:)` or `.approveOnTV` via the async handler when required; return `.code(String)` or `.acknowledged` respectively. The on-TV approval response acknowledges the prompt, not successful pairing; the driver waits for the device's reply. Propagate cancellation from the handler when the user backs out.
 - **Device and capabilities:** `TVDevice.id` combines platform and stable identifier, not IP. `endpoint` is the last known host and port, and `capabilities` advertises remote keys, app launch, search, keyboard, network wake and pointer support as appropriate. A capability flag is not a guarantee on every firmware or TV setting. `currentDevice` gives the selected device, including a rediscovered endpoint; persist this metadata in the app, never an authentication secret. Credentials for paired platforms live in Keychain on Apple systems; the default on Linux is an in-memory store.
 - **Commands:** `send(_:)` takes a `RemoteKey` for navigation, volume, channels, power, playback, digits and keyboard input (`.text(String)`, `.delete`). Call `launch(_:)` with the platform-native app ID and `search(_:)` with a query. Unsupported commands throw `TVError.notSupported`; do not present that as a connection error. Roku exposes a playback toggle, not discrete play/pause/stop through ECP. On a recoverable command failure, the manager retries once with a fresh session and then recovers without another command replay. Text is never replayed automatically: Roku sends individual characters and the TV may have accepted part of the text. After an ambiguous failure, check the TV before resending. Route press bursts through a serialized command queue; overlapping calls may throw `.busy`.
@@ -34,7 +40,9 @@ try await remote.search("Severance")
 
 ## Driver and test seams
 
-`TVDriver` defines driver-level discovery, endpoint probing, pairing, connection, remote key, launch, search, wake, keepalive and state. A `TVDriverFactory` must vend a fresh session on each call. Drivers must verify device identity when opening an endpoint and cooperate with task cancellation. `TVRemoteCore` contains the portable protocol, types, manager and transport interfaces; `RokuDriver` translates remote commands into ECP with an injected `HTTPTransport`; `TVRemoteKit` assembles the product with Apple Bonjour/SSDP and Keychain adapters. Fakes can supply transport, discovery, credential store and clock implementations.
+`TVDriver` defines driver-level discovery, endpoint probing, pairing, connection, remote key, launch, search, wake, keepalive and state. A `TVDriverFactory` must vend a fresh session on each call. Drivers must verify device identity when opening an endpoint and cooperate with task cancellation. `TVRemoteCore` contains the portable protocol, types, manager and transport interfaces; `RokuDriver` translates remote commands into ECP with an injected `HTTPTransport`. `GoogleTVDriver` uses an injected `GoogleTVTLSTransport` with cancellable `TLSByteStream` reads and writes and a SHA-256 provider. On Apple systems, `TVRemoteKit.makeManager` wires both drivers, Apple Bonjour/SSDP, Keychain, Network TLS and CryptoKit. `makeRokuManager` remains available for Roku-only use. Portable tests can provide their own transport, discovery, credential store, digest and clock implementations.
+
+Protocol references: [AOSP Polo pairing](https://android.googlesource.com/platform/external/google-tv-pairing-protocol/) and [Android TV Remote v2 message schemas](https://github.com/tronikos/androidtvremote2/tree/main/src/androidtvremote2).
 
 ```sh
 cd Packages/TVRemoteKit
