@@ -105,6 +105,25 @@ async def test_roku_keys_and_endpoints(lab):
             await lab.apply("roku", {"action": "wake"})
 
 
+async def test_chaos_rejects_cross_origin_and_non_json_requests(lab):
+    origin = url((lab.host, lab.control_port))
+    endpoint = f"{origin}/tvs/roku/chaos"
+    action = '{"action":"sleep"}'
+    async with ClientSession() as client:
+        for headers, expected in (
+            ({"Origin": "https://unrelated.example", "Content-Type": "application/json"}, 403),
+            ({"Origin": "null", "Content-Type": "application/json"}, 403),
+            ({"Origin": origin, "Content-Type": "text/plain"}, 415),
+            ({"Content-Type": "text/plain"}, 415),
+        ):
+            async with client.post(endpoint, data=action, headers=headers) as response:
+                assert response.status == expected
+            assert not lab.tvs["roku"].sleeping
+        async with client.post(endpoint, json={"action": "sleep"}, headers={"Origin": origin}) as response:
+            assert response.status == 200
+            assert (await response.json())["sleeping"]
+
+
 async def test_chaos_endpoint_ip_changes_network_and_sleep(lab):
     async with ClientSession(timeout=ClientTimeout(total=1), raise_for_status=True) as client:
         api = Controller(url((lab.host, lab.control_port)), client)

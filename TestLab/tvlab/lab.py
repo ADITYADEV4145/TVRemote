@@ -138,6 +138,11 @@ class Lab:
         name = request.match_info["name"]
         if name not in self.tvs:
             raise web.HTTPNotFound()
+        origins = request.headers.getall("Origin", [])
+        if origins and origins != [f"{request.scheme}://{request.host}"]:
+            raise web.HTTPForbidden(text="Cross-origin chaos requests are not allowed")
+        if request.content_type != "application/json":
+            raise web.HTTPUnsupportedMediaType(text="Expected application/json")
         async with self.lock:
             try:
                 await self.apply(name, await request.json())
