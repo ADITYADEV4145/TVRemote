@@ -82,6 +82,7 @@ struct VoiceSettingsScreen: View {
 struct DiagnosticsScreen: View {
     @Environment(RemoteViewModel.self) private var connection
     @State private var showRepair = false
+    @State private var editingAddress = false
 
     var body: some View {
         ScreenBody {
@@ -99,6 +100,10 @@ struct DiagnosticsScreen: View {
                     }
                 }
                 .buttonStyle(PrimaryActionStyle()).disabled(connection.isConnecting)
+                if !connection.isDemo, !connection.canControl {
+                    Button("Update TV address") { editingAddress = true }
+                        .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
+                }
             }
             NavigationLink("Connection details") { ConnectionDetailsScreen() }.buttonStyle(SecondaryActionStyle())
             Panel {
@@ -112,12 +117,19 @@ struct DiagnosticsScreen: View {
         .modifier(TaskSurface())
         .onAppear { connection.clearMessages() }
         .onChange(of: connection.pairingPrompt) {
-            if connection.pairingPrompt != nil { showRepair = true }
+            if connection.pairingPrompt != nil && !editingAddress { showRepair = true }
         }
         .sheet(isPresented: $showRepair) {
             NavigationStack {
                 SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code) {
                     showRepair = false
+                }
+            }
+        }
+        .sheet(isPresented: $editingAddress) {
+            NavigationStack {
+                SetupScreen(initialPage: .manual, movedDeviceID: connection.currentDevice?.id) {
+                    editingAddress = false
                 }
             }
         }

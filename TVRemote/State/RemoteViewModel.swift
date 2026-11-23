@@ -185,7 +185,7 @@ final class RemoteViewModel {
         }
     }
 
-    func find(address: String) async -> Bool {
+    func find(address: String, matching selectedID: String? = nil) async -> Bool {
         guard !isConnecting else { return false }
         let address = address.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !address.isEmpty else { return false }
@@ -193,7 +193,7 @@ final class RemoteViewModel {
         let device: TVDevice
         isConnecting = true
         do {
-            if let live { device = try await live.find(address) }
+            if let live { device = try await live.find(address, matching: selectedID) }
             else if let driver { device = try await driver.device(at: address) }
             else { return false }
         } catch {

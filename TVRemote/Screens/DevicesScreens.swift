@@ -9,10 +9,13 @@ struct SetupScreen: View {
     @State private var page: SetupPage
     @State private var address = ""
     @State private var code = ""
+    private let movedDeviceID: String?
     let connected: () -> Void
 
-    init(initiallyStarted: Bool = false, initialPage: SetupPage? = nil, connected: @escaping () -> Void) {
+    init(initiallyStarted: Bool = false, initialPage: SetupPage? = nil, movedDeviceID: String? = nil,
+         connected: @escaping () -> Void) {
         _page = State(initialValue: initialPage ?? (initiallyStarted ? .discovery : .welcome))
+        self.movedDeviceID = movedDeviceID
         self.connected = connected
     }
 
@@ -60,7 +63,7 @@ struct SetupScreen: View {
         }
         .modifier(CloseTool())
         .toolbar {
-            if page != .welcome {
+            if page != .welcome && movedDeviceID == nil {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Back", systemImage: "chevron.left") {
                         connection.cancelPairing()
@@ -138,7 +141,8 @@ struct SetupScreen: View {
 
     private var manual: some View {
         Group {
-            ScreenHeading("", "Add by IP address", "When your TV doesn’t appear automatically.")
+            ScreenHeading("", movedDeviceID == nil ? "Add by IP address" : "Update TV address",
+                          movedDeviceID == nil ? "When your TV doesn’t appear automatically." : "Enter the new address for your saved TV.")
             Text("TV address").font(.subheadline).foregroundStyle(RemoteTheme.muted)
             TextField("192.168.1.42", text: $address)
                 .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -147,10 +151,12 @@ struct SetupScreen: View {
                            ? "Demo addresses: 192.0.2.10 or 192.0.2.11."
                            : "Find the address in your TV’s network settings. An address is not a substitute for pairing.")
             Button("Find TV") {
-                Task { if await connection.find(address: address) { page = .ready } }
+                Task { if await connection.find(address: address, matching: movedDeviceID) { page = .ready } }
             }
             .buttonStyle(PrimaryActionStyle()).disabled(address.isEmpty || connection.isConnecting)
-            Button("Back to nearby TVs") { page = .discovery }.buttonStyle(SecondaryActionStyle())
+            if movedDeviceID == nil {
+                Button("Back to nearby TVs") { page = .discovery }.buttonStyle(SecondaryActionStyle())
+            }
         }
     }
 }

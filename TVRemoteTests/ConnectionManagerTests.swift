@@ -319,6 +319,26 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertNil(relaunched.lastSelectedID)
     }
 
+    func testAddressUpdateKeepsPairingAndRejectsDifferentTV() async throws {
+        let (connection, session, tv, driver) = try await liveFixture([.remoteKeys])
+        let saved = session.save(tv)
+        try await session.credentials.save(.token("existing"), for: tv.id)
+        let endpoint = TVEndpoint(host: "192.0.2.2", port: tv.endpoint.port)
+        let other = LiveTVSession.Device(id: TVIdentity(platform: .lg, identifier: "other"), name: tv.name,
+                                         endpoint: endpoint, capabilities: tv.capabilities)
+        await driver.serveProbe(for: other)
+        var connected = await connection.find(address: endpoint.host, matching: saved.id)
+        XCTAssertFalse(connected)
+        XCTAssertEqual(session.device(saved.id)?.endpoint, tv.endpoint)
+        let moved = LiveTVSession.Device(id: tv.id, name: tv.name, endpoint: endpoint, capabilities: tv.capabilities)
+        await driver.serveProbe(for: moved)
+        connected = await connection.find(address: endpoint.host, matching: saved.id)
+        XCTAssertTrue(connected)
+        XCTAssertEqual(session.savedDevices.map(\.address), [endpoint.host])
+        let credential = try await session.credentials.load(for: tv.id)
+        XCTAssertEqual(credential, .token("existing"))
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)

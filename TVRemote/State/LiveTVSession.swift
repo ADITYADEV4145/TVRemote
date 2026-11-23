@@ -72,12 +72,16 @@ final class LiveTVSession {
         aliases[id] = name
     }
 
-    func find(_ address: String) async throws -> TVDevice {
+    func find(_ address: String, matching selectedID: String? = nil) async throws -> TVDevice {
         guard let parts = URLComponents(string: "http://\(address)"), let host = parts.host,
               !host.isEmpty, parts.user == nil, parts.password == nil, parts.path.isEmpty,
               parts.query == nil, parts.fragment == nil else { throw Failure.address }
         let device: Device?
-        if let port = parts.port {
+        if let selectedID, let selected = known[selectedID] {
+            let port = parts.port ?? Int(selected.endpoint.port)
+            guard let value = UInt16(exactly: port), switchPort(value) == selected.id.platform else { throw Failure.address }
+            device = try? await manager.probe(TVEndpoint(host: host, port: value), platform: selected.id.platform)
+        } else if let port = parts.port {
             guard let value = UInt16(exactly: port),
                   let platform = switchPort(value) else { throw Failure.address }
             device = try? await manager.probe(TVEndpoint(host: host, port: value), platform: platform)
@@ -90,6 +94,7 @@ final class LiveTVSession {
             }
         }
         guard let device else { throw Failure.notFound }
+        if let selectedID, Self.id(device) != selectedID { throw Failure.differentTV }
         return remember(device)
     }
 
@@ -139,12 +144,13 @@ final class LiveTVSession {
     }
 
     enum Failure: LocalizedError {
-        case address, notFound
+        case address, notFound, differentTV
 
         var errorDescription: String? {
             switch self {
             case .address: "Enter a TV’s IP address, optionally followed by its control port."
             case .notFound: "No supported TV responded at that address. Check your network and try again."
+            case .differentTV: "A different TV responded at that address. The saved TV was not changed."
             }
         }
     }

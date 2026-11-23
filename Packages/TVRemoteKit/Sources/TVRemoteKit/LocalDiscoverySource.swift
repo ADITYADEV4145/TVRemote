@@ -15,7 +15,7 @@ public struct LocalDiscoverySource: DiscoverySource {
         .samsung: ["_samsungmsf._tcp"]
     ]
 
-    package static let subnetProbePorts: [TVPlatform: UInt16] = [.roku: 8060, .lg: 3001]
+    package static let subnetProbePorts: [TVPlatform: UInt16] = [.roku: 8060, .samsung: 8002, .lg: 3001]
 
     public func browse(for platform: TVPlatform) -> AsyncStream<DiscoveryCandidate> {
         #if canImport(Network) && canImport(Darwin)
