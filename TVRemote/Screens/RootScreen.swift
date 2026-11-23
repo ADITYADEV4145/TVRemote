@@ -86,18 +86,14 @@ struct RootScreen: View {
     }
 }
 
-/// Update the native bar's preference when this tab's resolved appearance changes.
+/// Update the surface sampled by the native glass bar when appearance changes.
 /// Keeping the TabView's identity preserves selection and navigation state.
 private struct MatchingTabAppearance: ViewModifier {
     @Environment(\.self) private var environment
 
     func body(content: Content) -> some View {
         content
-            .toolbarColorScheme(environment.colorScheme, for: .tabBar)
-            // Pass a new concrete value, not a cached dynamic UIColor-backed
-            // token, so the native bar refreshes its background on every tab.
-            .toolbarBackground(Color(RemoteTheme.surface.resolve(in: environment)), for: .tabBar)
-            .toolbarBackground(.visible, for: .tabBar)
+            .background(Color(RemoteTheme.canvas.resolve(in: environment)).ignoresSafeArea())
     }
 }
 

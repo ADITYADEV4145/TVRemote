@@ -39,6 +39,7 @@ enum RemoteTheme {
 }
 
 struct ScreenBody<Content: View>: View {
+    @Environment(\.self) private var environment
     var spacing: CGFloat = RemoteTheme.spacing
     @ViewBuilder var content: Content
 
@@ -54,7 +55,7 @@ struct ScreenBody<Content: View>: View {
         // ScrollView normally draws through its safe-area edges. These screens
         // hide the navigation bar, so there is no bar to cover the status area.
         .clipped()
-        .background(RemoteTheme.canvas.ignoresSafeArea())
+        .background(Color(RemoteTheme.canvas.resolve(in: environment)).ignoresSafeArea())
         .foregroundStyle(RemoteTheme.ink)
     }
 }
@@ -62,6 +63,7 @@ struct ScreenBody<Content: View>: View {
 /// Keeps primary actions out of scrolling content and above the native tab bar.
 /// The system supplies the bar's inset; no device-specific bar height is assumed.
 struct ScreenActions<Actions: View>: ViewModifier {
+    @Environment(\.self) private var environment
     var isPresented = true
     @ViewBuilder var actions: Actions
 
@@ -73,7 +75,7 @@ struct ScreenActions<Actions: View>: ViewModifier {
                     .padding(.vertical, 12)
                     .frame(maxWidth: 560)
                     .frame(maxWidth: .infinity)
-                    .background(RemoteTheme.canvas)
+                    .background(Color(RemoteTheme.canvas.resolve(in: environment)))
             }
         }
     }
