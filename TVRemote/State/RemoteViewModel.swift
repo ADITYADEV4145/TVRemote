@@ -370,7 +370,7 @@ final class RemoteViewModel {
             if let live, live.device(device.id)?.capabilities.contains(.networkWake) == true {
                 wakeInFlight = true
                 defer { wakeInFlight = false }
-                await runCommand("Wake TV", feedback: "Wake signal sent", waitForHealthCheck: false) {
+                await runCommand("Wake TV", feedback: "Wake signal sent") {
                     try await live.manager.wake()
                 }
                 return
@@ -409,14 +409,12 @@ final class RemoteViewModel {
 
     func loadInputs() async throws -> [TVInput] {
         guard canControl, supportsInputSelection, let live else { throw TVError.notSupported }
-        await healthCheck?.value
-        return try await live.manager.inputs()
+        return try await enqueue { try await live.manager.inputs() }
     }
 
     func loadApps() async throws -> [TVApp] {
         guard canControl, supportsAppList, let live else { throw TVError.notSupported }
-        await healthCheck?.value
-        return try await live.manager.apps()
+        return try await enqueue { try await live.manager.apps() }
     }
 
     func selectInput(_ input: TVInput) async {
@@ -613,25 +611,35 @@ final class RemoteViewModel {
 
     private func perform(_ command: String, feedback message: String? = nil,
                          action: @escaping @MainActor () async throws -> Void) async {
+        try? await enqueue { [self] in
+            await runCommand(command, feedback: message, action: action)
+        }
+    }
+
+    private func enqueue<T: Sendable>(_ action: @escaping @MainActor () async throws -> T) async throws -> T {
         let previous = commandTail
         let selection = selectionGeneration
         commandSequence += 1
         let sequence = commandSequence
         let task = Task {
             await previous?.value
-            guard selectionGeneration == selection else { return }
-            await runCommand(command, feedback: message, action: action)
+            await healthCheck?.value
+            try Task.checkCancellation()
+            guard selectionGeneration == selection else { throw CancellationError() }
+            return try await action()
         }
-        commandTail = task
-        await task.value
-        if commandSequence == sequence { commandTail = nil }
+        commandTail = Task { _ = await task.result }
+        defer { if commandSequence == sequence { commandTail = nil } }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
-    private func runCommand(_ command: String, feedback message: String?, waitForHealthCheck: Bool = true,
+    private func runCommand(_ command: String, feedback message: String?,
                             action: @MainActor () async throws -> Void) async {
-        let selection = selectionGeneration
-        if waitForHealthCheck { await healthCheck?.value }
-        guard selectionGeneration == selection, !isConnecting else { return }
+        guard !isConnecting else { return }
         let generation = messageGeneration
         let deviceID = currentDevice?.id
         error = nil

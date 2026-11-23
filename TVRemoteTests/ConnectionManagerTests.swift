@@ -27,10 +27,13 @@ private actor LiveFixtureDriver: TVDriver {
     private var online = true
     private(set) var wakes = 0
     private(set) var keys: [TVRemoteCore.RemoteKey] = []
+    private(set) var launchedApps: [TVRemoteCore.AppID] = []
     private(set) var probedPorts: [UInt16] = []
     private var probeDevice: TVRemoteCore.TVDevice?
     private let firstSend = AsyncStream<Void>.makeStream()
     private let release = AsyncStream<Void>.makeStream()
+    private let catalogStarted = AsyncStream<Void>.makeStream()
+    private let catalogRelease = AsyncStream<Void>.makeStream()
     private var holdFirstSend = false
     private var channelAvailable = true
     private var shouldTimeOutApproval = false
@@ -42,6 +45,8 @@ private actor LiveFixtureDriver: TVDriver {
     func holdNextSend() { holdFirstSend = true }
     func waitForSend() async { for await _ in firstSend.stream { break } }
     func releaseSend() { release.continuation.finish() }
+    func waitForCatalog() async { for await _ in catalogStarted.stream { break } }
+    func releaseCatalog() { catalogRelease.continuation.finish() }
     nonisolated func discover() -> AsyncStream<TVRemoteCore.TVDevice> { AsyncStream { $0.finish() } }
     func serveProbe(for device: TVRemoteCore.TVDevice) {
         probeDevice = device
@@ -71,7 +76,16 @@ private actor LiveFixtureDriver: TVDriver {
             for await _ in release.stream {}
         }
     }
-    func launch(_ app: TVRemoteCore.AppID) async throws { throw TVError.notSupported }
+    func launch(_ app: TVRemoteCore.AppID) throws {
+        try requireOnline()
+        launchedApps.append(app)
+    }
+    func apps() async throws -> [TVApp] {
+        try requireOnline()
+        catalogStarted.continuation.yield(())
+        for await _ in catalogRelease.stream {}
+        return [TVApp(id: TVRemoteCore.AppID(rawValue: "11101200001"), name: "Netflix")]
+    }
     func selectInput(_ input: TVInput) throws { try requireOnline() }
     func search(_ query: String) async throws { throw TVError.notSupported }
     func wake(_ tv: TVRemoteCore.TVDevice) async {
@@ -430,6 +444,27 @@ final class ConnectionManagerTests: XCTestCase {
         await third.value
         let keys = await driver.keys
         XCTAssertEqual(keys, [.volumeUp, .left, .volumeDown])
+    }
+
+    func testLaunchingSamsungAppWaitsForCatalogRefresh() async throws {
+        let (connection, session, device, driver) = try await liveFixture(platform: .samsung, [.launch, .appList])
+        try await session.credentials.save(.token("paired"), for: device.id)
+        let connected = await connection.select(session.save(device))
+        XCTAssertTrue(connected)
+
+        let catalog = Task { try await connection.loadApps() }
+        await driver.waitForCatalog()
+        let netflix = AppID(rawValue: "11101200001")
+        let launch = Task { await connection.launch(netflix, name: "Netflix") }
+        await Task.yield()
+        await driver.releaseCatalog()
+
+        let apps = try await catalog.value
+        XCTAssertEqual(apps.map(\.id), [netflix])
+        await launch.value
+        let launchedApps = await driver.launchedApps
+        XCTAssertEqual(launchedApps, [netflix])
+        XCTAssertNil(connection.error)
     }
 
     func testLGApprovalTimeoutRetriesTheSameTV() async throws {
