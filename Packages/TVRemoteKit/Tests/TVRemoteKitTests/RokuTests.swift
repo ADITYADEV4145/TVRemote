@@ -27,15 +27,17 @@ private struct CandidateSource: DiscoverySource {
 }
 
 private actor Transcript: HTTPTransport {
-    private var responses: [HTTPResponse]
+    private var responses: [Result<HTTPResponse, TVError>]
     private(set) var requests: [HTTPRequest] = []
 
-    init(_ responses: [HTTPResponse]) { self.responses = responses }
+    init(_ responses: [HTTPResponse]) { self.responses = responses.map { .success($0) } }
+
+    init(results: [Result<HTTPResponse, TVError>]) { responses = results }
 
     func request(_ request: HTTPRequest) throws -> HTTPResponse {
         requests.append(request)
         guard !responses.isEmpty else { throw TVError.invalidResponse }
-        return responses.removeFirst()
+        return try responses.removeFirst().get()
     }
 }
 
@@ -183,6 +185,28 @@ private struct ImmediateClock: ConnectionClock {
     let requests = await transport.requests
     #expect(requests.map(\.method) == [.get, .get, .get, .get, .get, .post])
     #expect(requests.last?.url.path == "/keypress/PowerOff")
+}
+
+@Test(arguments: [RemoteKey.powerOff, .volumeUp])
+func rokuCommandsCanReachATVThatWakesAfterAnUnreachableStandby(_ key: RemoteKey) async throws {
+    let transport = Transcript(results: [
+        .success(deviceInfo()), .success(deviceInfo()), .success(deviceInfo(power: "PowerOff")),
+        .failure(.unreachable), .success(deviceInfo()), .success(deviceInfo()), .success(HTTPResponse(status: 200))
+    ])
+    let manager = ConnectionManager(
+        drivers: [TVDriverFactory(platform: .roku) { RokuECPDriver(http: transport) }],
+        credentials: MemoryCredentialStore(), clock: ImmediateClock()
+    )
+    let tv = try await manager.probe(endpoint, platform: .roku)
+    try await manager.connect(tv)
+    await #expect(throws: TVError.asleep) { try await manager.checkConnection() }
+    await #expect(throws: TVError.unreachable) { try await manager.send(.powerOff) }
+    #expect(await transport.requests.map(\.method) == [.get, .get, .get, .get])
+    var state = manager.state.makeAsyncIterator()
+    #expect(await state.next() == .degraded)
+    try await manager.send(key)
+    let posts = await transport.requests.filter { $0.method == .post }
+    #expect(posts.map { $0.url.path } == [key == .powerOff ? "/keypress/PowerOff" : "/keypress/VolumeUp"])
 }
 
 @Test func ssdpRequiresMatchingSourceAndPlatformFingerprint() {
