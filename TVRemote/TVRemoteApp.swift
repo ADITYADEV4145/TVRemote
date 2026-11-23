@@ -11,6 +11,7 @@ struct TVRemoteApp: App {
             appRoot
                 .environment(connection)
                 .tint(RemoteTheme.accent)
+                .task { await connection.restoreSelection() }
                 .task(id: scenePhase) {
                     if scenePhase == .active { await connection.monitor() }
                 }

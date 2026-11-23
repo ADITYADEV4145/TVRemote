@@ -298,6 +298,27 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(session.save(device).name, original.name)
     }
 
+    func testRelaunchReconnectsLastSelectedSavedTV() async throws {
+        let defaults = try fixtureDefaults()
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys], defaults: defaults)
+        try await session.credentials.save(.token("paired"), for: device.id)
+        let saved = session.remember(device)
+        let connected = await connection.select(saved)
+        XCTAssertTrue(connected)
+        await session.manager.disconnect()
+
+        let relaunched = LiveTVSession(defaults: defaults, credentials: session.credentials, manager: session.manager)
+        let reopened = RemoteViewModel(live: relaunched)
+        await reopened.restoreSelection()
+        XCTAssertEqual(reopened.currentDevice?.id, saved.id)
+        XCTAssertTrue(reopened.canControl)
+        await reopened.send(.volumeUp)
+        let keys = await driver.keys
+        XCTAssertEqual(keys, [.volumeUp])
+        await reopened.forget(saved)
+        XCTAssertNil(relaunched.lastSelectedID)
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)

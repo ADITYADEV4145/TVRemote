@@ -43,6 +43,7 @@ final class RemoteViewModel {
     @ObservationIgnored private var commandSequence = 0
     @ObservationIgnored private var selectionGeneration = 0
     @ObservationIgnored private var healthCheck: Task<Void, Never>?
+    @ObservationIgnored private var restoredSelection = false
 
     init(driver: MockTVDriver, isDemo: Bool = true) {
         self.driver = driver
@@ -66,6 +67,25 @@ final class RemoteViewModel {
     }
 
     deinit { stateTask?.cancel() }
+
+    func restoreSelection() async {
+        guard !restoredSelection, !isConnecting, currentDevice == nil else { return }
+        restoredSelection = true
+        guard let live, let id = live.lastSelectedID, let tv = live.device(id),
+              let saved = savedDevices.first(where: { $0.id == id }) else { return }
+        currentDevice = saved
+        isConnecting = true
+        defer { isConnecting = false }
+        do {
+            try await live.manager.connect(tv)
+            await didConnect(using: live)
+        } catch is CancellationError {
+            restoredSelection = false
+            currentDevice = nil
+        } catch {
+            self.error = Self.describe(error)
+        }
+    }
 
     var canControl: Bool { state == .ready && currentDevice != nil && !isConnecting }
     var canChangeChannel: Bool {
@@ -461,7 +481,9 @@ final class RemoteViewModel {
 
     private func didConnect(using live: LiveTVSession) async {
         guard let connected = await live.manager.currentDevice else { return }
-        currentDevice = live.save(connected)
+        let saved = live.save(connected)
+        currentDevice = saved
+        live.lastSelectedID = saved.id
         savedDevices = live.savedDevices
         state = .ready
         pairingDevice = nil

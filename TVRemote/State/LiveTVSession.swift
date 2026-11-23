@@ -12,6 +12,7 @@ final class LiveTVSession {
     private let defaults: UserDefaults
     private let savedKey = "TVRemoteKit.savedDevices"
     private let aliasesKey = "TVRemoteKit.deviceAliases"
+    private let lastSelectedKey = "TVRemoteKit.lastSelectedDevice"
 
     init(defaults: UserDefaults = .standard,
          credentials: any CredentialStore = TVRemoteKit.defaultCredentialStore(),
@@ -36,6 +37,10 @@ final class LiveTVSession {
     }
 
     var savedDevices: [TVDevice] { stored.map(presentation) }
+    var lastSelectedID: String? {
+        get { defaults.string(forKey: lastSelectedKey) }
+        set { defaults.set(newValue, forKey: lastSelectedKey) }
+    }
     var state: AsyncStream<TVRemoteCore.ConnectionState> { manager.state }
     func device(_ id: String) -> Device? { known[id] }
 
@@ -59,6 +64,7 @@ final class LiveTVSession {
         try await credentials.remove(for: device.id)
         defaults.set(try? JSONEncoder().encode(stored.filter { $0.id != device.id }), forKey: savedKey)
         aliases.removeValue(forKey: id)
+        if lastSelectedID == id { lastSelectedID = nil }
     }
 
     func rename(_ id: String, to name: String) {
