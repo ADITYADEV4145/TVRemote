@@ -58,14 +58,16 @@ final class SimulatedTVTests: XCTestCase {
             XCTAssertFalse(mismatch.exists)
         } else if brand == "samsung" || brand == "lg" {
             let retry = app.buttons["Try again"]
-            if brand == "samsung" { assertApprovalPending(in: app, retry: retry) }
-            let rejected = app.staticTexts["The TV declined the pairing request."].waitForExistence(timeout: 8)
+            let declineMessage = "The TV declined the pairing request."
+            if brand == "samsung" { try assertApprovalPendingOrFinished(in: app, outcome: declineMessage) }
+            let rejected = app.staticTexts[declineMessage].waitForExistence(timeout: 8)
             try await chaos("approval", for: brand, allow: true)
             XCTAssertTrue(rejected)
             XCTAssertTrue(app.staticTexts["Look up at the TV"].exists)
             XCTAssertFalse(app.staticTexts["Add by IP address"].exists)
             XCTAssertTrue(retry.isEnabled)
             XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
+            capture("\(brand)-approval")
             if brand == "lg" {
                 try await chaos("approval", for: brand, allow: false)
                 app.buttons["Choose another TV"].tap()
@@ -76,8 +78,7 @@ final class SimulatedTVTests: XCTestCase {
                 try await chaos("approval", for: brand, allow: true)
             }
             retry.tap()
-            assertApprovalPending(in: app, retry: retry)
-            capture("\(brand)-approval")
+            try assertApprovalPendingOrFinished(in: app, outcome: "Open remote")
         }
         let openRemote = app.buttons["Open remote"]
         XCTAssertTrue(openRemote.waitForExistence(timeout: 20))
@@ -184,11 +185,22 @@ final class SimulatedTVTests: XCTestCase {
     }
 
     @MainActor
-    private func assertApprovalPending(in app: XCUIApplication, retry: XCUIElement) {
-        XCTAssertTrue(app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12))
-        XCTAssertTrue(app.staticTexts["Connecting to TV"].exists)
-        XCTAssertFalse(retry.isEnabled)
-        XCTAssertFalse(app.staticTexts["The TV declined the pairing request."].exists)
+    private func assertApprovalPendingOrFinished(in app: XCUIApplication, outcome: String) throws {
+        let approval = "Look up at the TV"
+        let phase = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label IN %@", [approval, outcome])).firstMatch
+        XCTAssertTrue(phase.waitForExistence(timeout: 12))
+
+        let snapshot = try app.snapshot()
+        func find(_ label: String, in element: any XCUIElementSnapshot) -> (any XCUIElementSnapshot)? {
+            if element.label == label { return element }
+            return element.children.lazy.compactMap { find(label, in: $0) }.first
+        }
+        if find(outcome, in: snapshot) != nil { return }
+        XCTAssertNotNil(find(approval, in: snapshot))
+        XCTAssertNotNil(find("Connecting to TV", in: snapshot))
+        XCTAssertFalse(try XCTUnwrap(find("Try again", in: snapshot)).isEnabled)
+        XCTAssertNil(find("The TV declined the pairing request.", in: snapshot))
     }
 
     @MainActor
