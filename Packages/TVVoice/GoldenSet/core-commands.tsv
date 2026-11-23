@@ -1,0 +1,616 @@
+# category	utterance	expected canonical command
+# Hand-labeled. 'core' is gated at >=95% by `swift test` and `tvvoice eval`.
+# Transcripts are typed text, not audio: this checks understanding, not speech recognition.
+core	hey volume up please	volume:up:1
+core	please volume up please	volume:up:1
+core	volume up	volume:up:1
+core	can you turn it up now	volume:up:1
+core	turn it up	volume:up:1
+core	um turn it up please	volume:up:1
+core	ok turn up the volume	volume:up:1
+core	turn up the volume	volume:up:1
+core	turn up the volume now	volume:up:1
+core	hey louder	volume:up:1
+core	hey louder please	volume:up:1
+core	louder	volume:up:1
+core	make it louder	volume:up:1
+core	ok make it louder now	volume:up:1
+core	um make it louder please	volume:up:1
+core	please raise the volume now	volume:up:1
+core	raise the volume	volume:up:1
+core	raise the volume please	volume:up:1
+core	can you increase volume please	volume:up:1
+core	hey increase volume thanks	volume:up:1
+core	increase volume	volume:up:1
+core	could you volume higher please	volume:up:1
+core	um volume higher now	volume:up:1
+core	volume higher	volume:up:1
+core	can you turn the volume up please	volume:up:1
+core	can you turn the volume up thanks	volume:up:1
+core	turn the volume up	volume:up:1
+core	could you crank it up please	volume:up:1
+core	crank it up	volume:up:1
+core	crank it up now	volume:up:1
+core	can you volume down please	volume:down:1
+core	hey volume down	volume:down:1
+core	volume down	volume:down:1
+core	hey turn it down please	volume:down:1
+core	turn it down	volume:down:1
+core	turn it down thanks	volume:down:1
+core	ok turn down the volume	volume:down:1
+core	turn down the volume	volume:down:1
+core	um turn down the volume please	volume:down:1
+core	can you quieter please	volume:down:1
+core	quieter	volume:down:1
+core	um quieter thanks	volume:down:1
+core	make it quieter	volume:down:1
+core	um make it quieter now	volume:down:1
+core	um make it quieter thanks	volume:down:1
+core	could you lower the volume	volume:down:1
+core	lower the volume	volume:down:1
+core	decrease volume	volume:down:1
+core	decrease volume thanks	volume:down:1
+core	ok decrease volume now	volume:down:1
+core	please softer thanks	volume:down:1
+core	softer	volume:down:1
+core	softer thanks	volume:down:1
+core	hey turn the volume down thanks	volume:down:1
+core	please turn the volume down please	volume:down:1
+core	turn the volume down	volume:down:1
+core	ok volume lower	volume:down:1
+core	please volume lower please	volume:down:1
+core	volume lower	volume:down:1
+core	volume up two	volume:up:2
+core	turn it up two	volume:up:2
+core	volume up by two	volume:up:2
+core	volume down two	volume:down:2
+core	turn it down two	volume:down:2
+core	volume down by two	volume:down:2
+core	volume up three	volume:up:3
+core	turn it up three	volume:up:3
+core	volume up by three	volume:up:3
+core	volume down three	volume:down:3
+core	turn it down three	volume:down:3
+core	volume down by three	volume:down:3
+core	volume up five	volume:up:5
+core	turn it up five	volume:up:5
+core	volume up by five	volume:up:5
+core	volume down five	volume:down:5
+core	turn it down five	volume:down:5
+core	volume down by five	volume:down:5
+core	volume up 10	volume:up:10
+core	turn it up 10	volume:up:10
+core	volume up by 10	volume:up:10
+core	volume down 10	volume:down:10
+core	turn it down 10	volume:down:10
+core	volume down by 10	volume:down:10
+core	volume up four	volume:up:4
+core	turn it up four	volume:up:4
+core	volume up by four	volume:up:4
+core	volume down four	volume:down:4
+core	turn it down four	volume:down:4
+core	volume down by four	volume:down:4
+core	mute	volume:mute
+core	ok mute please	volume:mute
+core	um mute thanks	volume:mute
+core	mute the tv	volume:mute
+core	ok mute the tv please	volume:mute
+core	um mute the tv now	volume:mute
+core	can you mute it now	volume:mute
+core	mute it	volume:mute
+core	um mute it	volume:mute
+core	can you silence now	volume:mute
+core	ok silence now	volume:mute
+core	silence	volume:mute
+core	mute the sound	volume:mute
+core	mute the sound please	volume:mute
+core	please mute the sound please	volume:mute
+core	hey turn off the sound thanks	volume:mute
+core	ok turn off the sound please	volume:mute
+core	turn off the sound	volume:mute
+core	could you mute volume please	volume:mute
+core	mute volume	volume:mute
+core	mute volume thanks	volume:mute
+core	um unmute thanks	volume:unmute
+core	unmute	volume:unmute
+core	ok unmute the tv please	volume:unmute
+core	unmute the tv	volume:unmute
+core	could you sound on	volume:unmute
+core	sound on	volume:unmute
+core	could you turn the sound back on now	volume:unmute
+core	turn the sound back on	volume:unmute
+core	ok unmute it	volume:unmute
+core	unmute it	volume:unmute
+core	volume 20	volume:set:20
+core	set the volume to 20	volume:set:20
+core	set volume to 20	volume:set:20
+core	volume twenty	volume:set:20
+core	set the volume to twenty	volume:set:20
+core	set volume to twenty	volume:set:20
+core	volume fifteen	volume:set:15
+core	set the volume to fifteen	volume:set:15
+core	set volume to fifteen	volume:set:15
+core	volume thirty five	volume:set:35
+core	set the volume to thirty five	volume:set:35
+core	set volume to thirty five	volume:set:35
+core	volume 50	volume:set:50
+core	set the volume to 50	volume:set:50
+core	set volume to 50	volume:set:50
+core	volume ten	volume:set:10
+core	set the volume to ten	volume:set:10
+core	set volume to ten	volume:set:10
+core	hey turn off the tv thanks	power:off
+core	please turn off the tv please	power:off
+core	turn off the tv	power:off
+core	hey tv off	power:off
+core	ok tv off now	power:off
+core	tv off	power:off
+core	can you power off thanks	power:off
+core	power off	power:off
+core	power off please	power:off
+core	can you turn the tv off now	power:off
+core	ok turn the tv off thanks	power:off
+core	turn the tv off	power:off
+core	can you switch off the tv please	power:off
+core	could you switch off the tv please	power:off
+core	switch off the tv	power:off
+core	ok shut down the tv please	power:off
+core	shut down the tv	power:off
+core	um shut down the tv	power:off
+core	could you turn it off now	power:off
+core	please turn it off	power:off
+core	turn it off	power:off
+core	can you turn on the tv thanks	power:on
+core	turn on the tv	power:on
+core	tv on	power:on
+core	tv on please	power:on
+core	hey power on thanks	power:on
+core	power on	power:on
+core	can you turn the tv on	power:on
+core	turn the tv on	power:on
+core	switch on the tv	power:on
+core	switch on the tv now	power:on
+core	hey wake up the tv now	power:on
+core	wake up the tv	power:on
+core	power	power:toggle
+core	toggle power	power:toggle
+core	channel 7	channel:7
+core	go to channel 7	channel:7
+core	switch to channel 7	channel:7
+core	put on channel 7	channel:7
+core	channel seven	channel:7
+core	go to channel seven	channel:7
+core	switch to channel seven	channel:7
+core	put on channel seven	channel:7
+core	channel five	channel:5
+core	go to channel five	channel:5
+core	switch to channel five	channel:5
+core	put on channel five	channel:5
+core	channel 12	channel:12
+core	go to channel 12	channel:12
+core	switch to channel 12	channel:12
+core	put on channel 12	channel:12
+core	channel twelve	channel:12
+core	go to channel twelve	channel:12
+core	switch to channel twelve	channel:12
+core	put on channel twelve	channel:12
+core	channel forty two	channel:42
+core	go to channel forty two	channel:42
+core	switch to channel forty two	channel:42
+core	put on channel forty two	channel:42
+core	channel 204	channel:204
+core	go to channel 204	channel:204
+core	switch to channel 204	channel:204
+core	put on channel 204	channel:204
+core	channel one hundred	channel:100
+core	go to channel one hundred	channel:100
+core	switch to channel one hundred	channel:100
+core	put on channel one hundred	channel:100
+core	channel 7.1	channel:7.1
+core	go to channel 7.1	channel:7.1
+core	switch to channel 7.1	channel:7.1
+core	put on channel 7.1	channel:7.1
+core	channel seven point one	channel:7.1
+core	go to channel seven point one	channel:7.1
+core	switch to channel seven point one	channel:7.1
+core	put on channel seven point one	channel:7.1
+core	channel two	channel:2
+core	go to channel two	channel:2
+core	switch to channel two	channel:2
+core	put on channel two	channel:2
+core	channel nine	channel:9
+core	go to channel nine	channel:9
+core	switch to channel nine	channel:9
+core	put on channel nine	channel:9
+core	channel up	channel:up
+core	please channel up please	channel:up
+core	next channel	channel:up
+core	please next channel	channel:up
+core	channel plus	channel:up
+core	hey channel plus	channel:up
+core	channel down	channel:down
+core	please channel down	channel:down
+core	can you channel minus thanks	channel:down
+core	channel minus	channel:down
+core	last channel	channel:previous
+core	go back to the last channel	channel:previous
+core	flip back	channel:previous
+core	open netflix	launch:netflix
+core	launch netflix	launch:netflix
+core	go to netflix	launch:netflix
+core	start netflix	launch:netflix
+core	netflix	launch:netflix
+core	open youtube	launch:youtube
+core	launch youtube	launch:youtube
+core	go to youtube	launch:youtube
+core	start youtube	launch:youtube
+core	youtube	launch:youtube
+core	open you tube	launch:youtube
+core	launch you tube	launch:youtube
+core	go to you tube	launch:youtube
+core	start you tube	launch:youtube
+core	you tube	launch:youtube
+core	open hulu	launch:hulu
+core	launch hulu	launch:hulu
+core	go to hulu	launch:hulu
+core	start hulu	launch:hulu
+core	open disney plus	launch:disney-plus
+core	launch disney plus	launch:disney-plus
+core	go to disney plus	launch:disney-plus
+core	start disney plus	launch:disney-plus
+core	disney plus	launch:disney-plus
+core	open disney+	launch:disney-plus
+core	launch disney+	launch:disney-plus
+core	go to disney+	launch:disney-plus
+core	start disney+	launch:disney-plus
+core	disney+	launch:disney-plus
+core	open prime video	launch:prime-video
+core	launch prime video	launch:prime-video
+core	go to prime video	launch:prime-video
+core	start prime video	launch:prime-video
+core	prime video	launch:prime-video
+core	open amazon prime	launch:prime-video
+core	launch amazon prime	launch:prime-video
+core	go to amazon prime	launch:prime-video
+core	start amazon prime	launch:prime-video
+core	amazon prime	launch:prime-video
+core	open hbo max	launch:max
+core	launch hbo max	launch:max
+core	go to hbo max	launch:max
+core	start hbo max	launch:max
+core	hbo max	launch:max
+core	open max	launch:max
+core	launch max	launch:max
+core	go to max	launch:max
+core	start max	launch:max
+core	open peacock	launch:peacock
+core	launch peacock	launch:peacock
+core	go to peacock	launch:peacock
+core	start peacock	launch:peacock
+core	peacock	launch:peacock
+core	open paramount plus	launch:paramount-plus
+core	launch paramount plus	launch:paramount-plus
+core	go to paramount plus	launch:paramount-plus
+core	start paramount plus	launch:paramount-plus
+core	paramount plus	launch:paramount-plus
+core	open spotify	launch:spotify
+core	launch spotify	launch:spotify
+core	go to spotify	launch:spotify
+core	start spotify	launch:spotify
+core	spotify	launch:spotify
+core	open plex	launch:plex
+core	launch plex	launch:plex
+core	go to plex	launch:plex
+core	start plex	launch:plex
+core	open tubi	launch:tubi
+core	launch tubi	launch:tubi
+core	go to tubi	launch:tubi
+core	start tubi	launch:tubi
+core	open pluto tv	launch:pluto-tv
+core	launch pluto tv	launch:pluto-tv
+core	go to pluto tv	launch:pluto-tv
+core	start pluto tv	launch:pluto-tv
+core	pluto tv	launch:pluto-tv
+core	open crunchyroll	launch:crunchyroll
+core	launch crunchyroll	launch:crunchyroll
+core	go to crunchyroll	launch:crunchyroll
+core	start crunchyroll	launch:crunchyroll
+core	crunchyroll	launch:crunchyroll
+core	open twitch	launch:twitch
+core	launch twitch	launch:twitch
+core	go to twitch	launch:twitch
+core	start twitch	launch:twitch
+core	twitch	launch:twitch
+core	open espn	launch:espn
+core	launch espn	launch:espn
+core	go to espn	launch:espn
+core	start espn	launch:espn
+core	open apple tv	launch:apple-tv
+core	launch apple tv	launch:apple-tv
+core	go to apple tv	launch:apple-tv
+core	start apple tv	launch:apple-tv
+core	apple tv	launch:apple-tv
+core	open youtube tv	launch:youtube-tv
+core	launch youtube tv	launch:youtube-tv
+core	go to youtube tv	launch:youtube-tv
+core	start youtube tv	launch:youtube-tv
+core	youtube tv	launch:youtube-tv
+core	open sling	launch:sling
+core	launch sling	launch:sling
+core	go to sling	launch:sling
+core	start sling	launch:sling
+core	sling	launch:sling
+core	open net flix	launch:netflix
+core	launch net flix	launch:netflix
+core	go to net flix	launch:netflix
+core	start net flix	launch:netflix
+core	net flix	launch:netflix
+core	open netflex	launch:netflix
+core	launch netflex	launch:netflix
+core	go to netflex	launch:netflix
+core	start netflex	launch:netflix
+core	netflex	launch:netflix
+core	open netflicks	launch:netflix
+core	launch netflicks	launch:netflix
+core	go to netflicks	launch:netflix
+core	start netflicks	launch:netflix
+core	netflicks	launch:netflix
+core	open the netflix app	launch:netflix
+core	open netflix please	launch:netflix
+core	can you open youtube	launch:youtube
+core	bring up youtube	launch:youtube
+core	switch to hulu	launch:hulu
+core	could you pause now	key:pause
+core	pause	key:pause
+core	pause it	key:pause
+core	pause the show	key:pause
+core	pause the movie	key:pause
+core	hold on pause	key:pause
+core	stop for a sec	key:pause
+core	play	key:play
+core	um play	key:play
+core	resume	key:play
+core	resume thanks	key:play
+core	play it	key:play
+core	keep going	key:play
+core	continue	key:play
+core	unpause	key:play
+core	stop	key:stop
+core	stop playback	key:stop
+core	stop the video	key:stop
+core	rewind	key:rewind
+core	rewind it	key:rewind
+core	fast forward	key:fastForward
+core	fast-forward	key:fastForward
+core	fast forward it	key:fastForward
+core	next episode	key:next
+core	next	key:next
+core	skip to the next episode	key:next
+core	play next episode	key:next
+core	skip ahead 30 seconds	seek:30
+core	skip forward 30 seconds	seek:30
+core	forward 30 seconds	seek:30
+core	jump ahead 30 seconds	seek:30
+core	go back 30 seconds	seek:-30
+core	rewind 30 seconds	seek:-30
+core	skip back 30 seconds	seek:-30
+core	jump back 30 seconds	seek:-30
+core	skip ahead thirty seconds	seek:30
+core	skip forward thirty seconds	seek:30
+core	forward thirty seconds	seek:30
+core	jump ahead thirty seconds	seek:30
+core	go back thirty seconds	seek:-30
+core	rewind thirty seconds	seek:-30
+core	skip back thirty seconds	seek:-30
+core	jump back thirty seconds	seek:-30
+core	skip ahead 10 seconds	seek:10
+core	skip forward 10 seconds	seek:10
+core	forward 10 seconds	seek:10
+core	jump ahead 10 seconds	seek:10
+core	go back 10 seconds	seek:-10
+core	rewind 10 seconds	seek:-10
+core	skip back 10 seconds	seek:-10
+core	jump back 10 seconds	seek:-10
+core	skip ahead a minute	seek:60
+core	skip forward a minute	seek:60
+core	forward a minute	seek:60
+core	jump ahead a minute	seek:60
+core	go back a minute	seek:-60
+core	rewind a minute	seek:-60
+core	skip back a minute	seek:-60
+core	jump back a minute	seek:-60
+core	skip ahead two minutes	seek:120
+core	skip forward two minutes	seek:120
+core	forward two minutes	seek:120
+core	jump ahead two minutes	seek:120
+core	go back two minutes	seek:-120
+core	rewind two minutes	seek:-120
+core	skip back two minutes	seek:-120
+core	jump back two minutes	seek:-120
+core	skip ahead one minute	seek:60
+core	skip forward one minute	seek:60
+core	forward one minute	seek:60
+core	jump ahead one minute	seek:60
+core	go back one minute	seek:-60
+core	rewind one minute	seek:-60
+core	skip back one minute	seek:-60
+core	jump back one minute	seek:-60
+core	turn on captions	key:captions
+core	captions on	key:captions
+core	subtitles	key:captions
+core	turn on subtitles	key:captions
+core	closed captions	key:captions
+core	show subtitles	key:captions
+core	turn off subtitles	key:captions
+core	captions off	key:captions
+core	go home	key:home
+core	ok go home please	key:home
+core	can you home	key:home
+core	home	key:home
+core	could you home screen	key:home
+core	home screen	key:home
+core	take me home	key:home
+core	um take me home please	key:home
+core	can you go to the home screen now	key:home
+core	go to the home screen	key:home
+core	main menu	key:home
+core	um main menu thanks	key:home
+core	go back	key:back
+core	hey go back	key:back
+core	back	key:back
+core	hey back now	key:back
+core	back up	key:back
+core	hey back up	key:back
+core	please previous screen thanks	key:back
+core	previous screen	key:back
+core	return	key:back
+core	select	key:select
+core	ok	key:select
+core	okay	key:select
+core	enter	key:select
+core	choose this	key:select
+core	click	key:select
+core	press ok	key:select
+core	pick that one	key:select
+core	up	key:up
+core	go up	key:up
+core	move up	key:up
+core	press up	key:up
+core	scroll up	key:up
+core	up twice	key:up*2
+core	go up twice	key:up*2
+core	up two times	key:up*2
+core	up three times	key:up*3
+core	move up 3 times	key:up*3
+core	go up three	key:up*3
+core	down	key:down
+core	go down	key:down
+core	move down	key:down
+core	press down	key:down
+core	scroll down	key:down
+core	down twice	key:down*2
+core	go down twice	key:down*2
+core	down two times	key:down*2
+core	down three times	key:down*3
+core	move down 3 times	key:down*3
+core	go down three	key:down*3
+core	left	key:left
+core	go left	key:left
+core	move left	key:left
+core	press left	key:left
+core	left twice	key:left*2
+core	go left twice	key:left*2
+core	left two times	key:left*2
+core	left three times	key:left*3
+core	move left 3 times	key:left*3
+core	go left three	key:left*3
+core	right	key:right
+core	go right	key:right
+core	move right	key:right
+core	press right	key:right
+core	right twice	key:right*2
+core	go right twice	key:right*2
+core	right two times	key:right*2
+core	right three times	key:right*3
+core	move right 3 times	key:right*3
+core	go right three	key:right*3
+core	open search	key:search
+core	search	key:search
+core	go to search	key:search
+core	settings	key:settings
+core	open settings	key:settings
+core	go to settings	key:settings
+core	info	key:info
+core	show info	key:info
+core	more info	key:info
+core	menu	key:menu
+core	open the menu	key:menu
+core	show menu	key:menu
+core	hdmi 1	input:hdmi1
+core	switch to hdmi one	input:hdmi1
+core	input hdmi 1	input:hdmi1
+core	go to hdmi 1	input:hdmi1
+core	change input to hdmi 1	input:hdmi1
+core	hdmi 2	input:hdmi2
+core	switch to hdmi two	input:hdmi2
+core	input hdmi 2	input:hdmi2
+core	go to hdmi 2	input:hdmi2
+core	change input to hdmi 2	input:hdmi2
+core	hdmi 3	input:hdmi3
+core	switch to hdmi three	input:hdmi3
+core	input hdmi 3	input:hdmi3
+core	go to hdmi 3	input:hdmi3
+core	change input to hdmi 3	input:hdmi3
+core	hdmi 4	input:hdmi4
+core	switch to hdmi four	input:hdmi4
+core	input hdmi 4	input:hdmi4
+core	go to hdmi 4	input:hdmi4
+core	change input to hdmi 4	input:hdmi4
+core	antenna	input:tuner
+core	switch to antenna	input:tuner
+core	live tv input	input:tuner
+core	go to the tuner	input:tuner
+core	switch input	input:next
+core	change input	input:next
+core	next input	input:next
+core	change the source	input:next
+core	type hello	type:hello
+core	type in hello	type:hello
+core	type stranger things	type:stranger things
+search	search for severance	search:severance
+search	find severance	search:severance
+search	look for severance	search:severance
+search	play severance	search:severance
+search	watch severance	search:severance
+search	put on severance	search:severance
+search	search for the office	search:the office
+search	find the office	search:the office
+search	look for the office	search:the office
+search	play the office	search:the office
+search	watch the office	search:the office
+search	put on the office	search:the office
+search	search for stranger things	search:stranger things
+search	find stranger things	search:stranger things
+search	look for stranger things	search:stranger things
+search	play stranger things	search:stranger things
+search	watch stranger things	search:stranger things
+search	put on stranger things	search:stranger things
+search	search for breaking bad	search:breaking bad
+search	find breaking bad	search:breaking bad
+search	look for breaking bad	search:breaking bad
+search	play breaking bad	search:breaking bad
+search	watch breaking bad	search:breaking bad
+search	put on breaking bad	search:breaking bad
+search	search for the bear	search:the bear
+search	find the bear	search:the bear
+search	look for the bear	search:the bear
+search	play the bear	search:the bear
+search	watch the bear	search:the bear
+search	put on the bear	search:the bear
+search	search for dune	search:dune
+search	find dune	search:dune
+search	look for dune	search:dune
+search	play dune	search:dune
+search	watch dune	search:dune
+search	put on dune	search:dune
+search	search for planet earth	search:planet earth
+search	find planet earth	search:planet earth
+search	look for planet earth	search:planet earth
+search	play planet earth	search:planet earth
+search	watch planet earth	search:planet earth
+search	put on planet earth	search:planet earth
+search	play stranger things on netflix	search:stranger things@netflix
+search	find stranger things on netflix	search:stranger things@netflix
+search	watch stranger things on netflix	search:stranger things@netflix
+search	search youtube for cat videos	search:cat videos@youtube
+search	find cat videos on youtube	search:cat videos@youtube
+search	play the bear on hulu	search:the bear@hulu
+search	watch something funny	search:comedy
+search	put on something funny	search:comedy
+search	find a comedy	search:comedy
+search	find a horror movie	search:horror
+search	something scary	search:horror
+negative	what's the weather	none
+negative	tell me a joke	none
+negative	order a pizza	none
+negative	asdf qwerty	none
