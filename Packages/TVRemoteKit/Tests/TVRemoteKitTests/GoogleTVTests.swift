@@ -23,8 +23,8 @@ private let pairingReplies = hex("""
     """)
 private let remoteReady = hex("05 0a0308e704 04 12020800 05 c202020801")
 private let initialRemoteWrites = [
-    hex("1e 0a1c08e304121718012201312a0961747672656d6f74653205312e302e30"),
-    hex("05 120308e304")
+    hex("1e 0a1c08e704121718012201312a0961747672656d6f74653205312e302e30"),
+    hex("05 120308e704")
 ]
 
 private func hex(_ text: String) -> Data {
@@ -196,6 +196,7 @@ private func makeDriver(
         #expect(prompt == .enterCode(length: 6))
         return .code("4a1234")
     }
+    #expect(await manager.currentDevice?.capabilities.contains(.launch) == true)
 
     #expect(await pair.writes == [
         hex("1c 080210c8015215 0a0961747672656d6f7465 1208545652656d6f7465"),
@@ -230,6 +231,32 @@ private func makeDriver(
         .probe, .pairing(client), .control(client, peer: peer), .control(client, peer: peer)
     ])
     #expect(await transport.openings.map(\.endpoint) == [pairingEndpoint, pairingEndpoint, saved, saved])
+}
+
+@Test func googleTVAdvertisesAppLinksOnlyWhenNegotiated() async throws {
+    let pair = TranscriptTLSStream(pairingReplies + hex("2a 080210c801ca0222 0a20 " + secret))
+    let noLinks = hex("04 0a020867") + remoteReady.dropFirst(6)
+    let remote = TranscriptTLSStream(noLinks)
+    let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair), connection(remote)])
+    let driver = makeDriver(transport)
+    let tv = try await driver.probe(saved)
+    #expect(!tv.capabilities.contains(.launch))
+    let credential = try await driver.pair(tv) { _ in .code("4A1234") }
+    try await driver.connect(tv, credential)
+    #expect(await driver.connectedDevice()?.capabilities.contains(.launch) == false)
+    await #expect(throws: TVError.notSupported) { try await driver.launch(AppID(rawValue: "app://test")) }
+}
+
+@Test func googleTVReportsDeclinedPairingBeforeRequestingACode() async throws {
+    let pair = TranscriptTLSStream(hex("05 0802109003"))
+    let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair)])
+    let driver = makeDriver(transport)
+    let tv = try await driver.probe(saved)
+    await #expect(throws: TVError.pairingDeclined) {
+        try await driver.pair(tv) { _ in .code("4A1234") }
+    }
+    #expect(await pair.writes.count == 1)
+    #expect(await pair.closed)
 }
 
 @Test func googleTVRejectsInvalidCodeBeforeItSendsASecret() async throws {
@@ -318,6 +345,25 @@ private func makeDriver(
     await listener.value
     await #expect(throws: TVError.timedOut) { try await session.checkConnection() }
     #expect(await remote.closed)
+}
+
+@Test func googleTVSendsTextWithTheNegotiatedIMEFieldCounters() async throws {
+    let context = hex("0b a20108 0a020807 12020809")
+    let remote = TranscriptTLSStream(remoteReady.dropLast(6) + context + remoteReady.suffix(6))
+    let session = GoogleTVRemoteSession(wire: GoogleTVWire(stream: remote))
+    try await session.start()
+    try await session.sendText("Hi")
+    #expect(await remote.writes == initialRemoteWrites + [hex("15 aa0112 08071009 1a0c08011208080210021a024869")])
+}
+
+@Test func googleTVUsesUpdatedIMEBatchEditCounters() async throws {
+    let context = hex("0b a20108 0a020807 12020809")
+    let edit = hex("07 aa0104 080b100d")
+    let remote = TranscriptTLSStream(remoteReady.dropLast(6) + context + edit + remoteReady.suffix(6))
+    let session = GoogleTVRemoteSession(wire: GoogleTVWire(stream: remote))
+    try await session.start()
+    try await session.sendText("Hi")
+    #expect(await remote.writes == initialRemoteWrites + [hex("15 aa0112 080b100d 1a0c08011208080210021a024869")])
 }
 
 @Test func googleTVRejectsOversizedFramesBeforePrompting() async throws {

@@ -24,11 +24,17 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     public nonisolated func discover() -> AsyncStream<TVDevice> {
-        discoverSocketDevices(using: discovery, platform: .lg, probe: probe)
+        discoverSocketDevices(using: discovery, platform: .lg) { endpoint in
+            try await self.probe(endpoint, requireHello: true)
+        }
     }
 
     public func probe(_ endpoint: TVEndpoint) async throws -> TVDevice {
-        let (live, socket, _) = try await open(endpoint)
+        try await probe(endpoint, requireHello: false)
+    }
+
+    private func probe(_ endpoint: TVEndpoint, requireHello: Bool) async throws -> TVDevice {
+        let (live, socket, _) = try await open(endpoint, requireHello: requireHello)
         await socket.close()
         return live
     }
@@ -111,6 +117,7 @@ public actor LGWebOSDriver: TVDriver {
         case .back: try await button("BACK")
         case .home: try await button("HOME")
         case .options: try await button("MENU")
+        case .inputMenu: throw TVError.notSupported
         case .volumeUp: _ = try await request("audio/volumeUp")
         case .volumeDown: _ = try await request("audio/volumeDown")
         case .mute:
@@ -144,6 +151,28 @@ public actor LGWebOSDriver: TVDriver {
         _ = try await request("system.launcher/launch", ["id": .string(app.rawValue)])
     }
 
+    public func inputs() async throws -> [TVInput] {
+        let result = try await request("tv/getExternalInputList")
+        guard case .array(let devices) = result["devices"] else { throw TVError.invalidResponse }
+        return devices.compactMap {
+            guard let id = $0["id"].string else { return nil }
+            return TVInput(id: id, name: $0["label"].string ?? id)
+        }
+    }
+
+    public func selectInput(_ input: TVInput) async throws {
+        _ = try await request("tv/switchInput", ["inputId": .string(input.id)])
+    }
+
+    public func apps() async throws -> [TVApp] {
+        let result = try await request("com.webos.applicationManager/listLaunchPoints")
+        guard case .array(let apps) = result["launchPoints"] else { throw TVError.invalidResponse }
+        return apps.compactMap {
+            guard let id = $0["id"].string, let name = $0["title"].string else { return nil }
+            return TVApp(id: AppID(rawValue: id), name: name)
+        }
+    }
+
     public func search(_ query: String) async throws { throw TVError.notSupported }
 
     public func wake(_ tv: TVDevice) async throws {
@@ -157,17 +186,18 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     private func open(
-        _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil
+        _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil, requireHello: Bool = false
     ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         let ports: [UInt16] = credentialed ? [certificate == nil ? 3000 : 3001]
-            : (endpoint.port == 3000 ? [3000, 3001] : [3001, 3000])
+            : (endpoint.port == 3000 ? [3000, 3001] : [3001])
         var last: any Error = TVError.unreachable
         for port in ports {
             let secure = port == 3001
             do {
                 let url = try socketURL(host: endpoint.host, port: port, scheme: secure ? "wss" : "ws")
                 let policy: TLSPeerTrust = certificate.map(TLSPeerTrust.pinned) ?? (secure ? .pairing : .system)
-                return try await identify(endpoint: TVEndpoint(host: endpoint.host, port: port), url: url, trust: policy)
+                return try await identify(endpoint: TVEndpoint(host: endpoint.host, port: port), url: url,
+                                          trust: policy, requireHello: requireHello)
             } catch {
                 if error is CancellationError || error as? TVError == .identityMismatch { throw error }
                 last = error
@@ -177,7 +207,7 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     private func identify(
-        endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust
+        endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust, requireHello: Bool
     ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         var socket = try await sockets.open(url, trust: trust)
         var uuid: String?
@@ -196,6 +226,7 @@ public actor LGWebOSDriver: TVDriver {
                 }
                 name = payload["deviceName"].string ?? name
             case "error":
+                if requireHello { throw TVError.invalidResponse }
                 break
             default:
                 throw TVError.invalidResponse
@@ -203,14 +234,14 @@ public actor LGWebOSDriver: TVDriver {
         } catch {
             await socket.close()
             try Task.checkCancellation()
-            guard endpoint.port == 3001 else {
+            guard !requireHello, endpoint.port == 3001 else {
                 if error is CancellationError { throw TVError.unreachable }
                 throw error
             }
             if error is CancellationError { throw error }
             socket = try await sockets.open(url, trust: trust)
         }
-        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard]
+        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard, .inputSelection, .appList]
         if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
         return (TVDevice(id: TVIdentity(platform: .lg, identifier: uuid ?? endpoint.host.lowercased()), name: name,
                          endpoint: endpoint, capabilities: capabilities, wakeAddress: address), socket, uuid)
@@ -242,7 +273,9 @@ public actor LGWebOSDriver: TVDriver {
                     guard try await prompt(.approveOnTV) == .acknowledged else { throw TVError.invalidCommand }
                     prompted = true
                 }
-            case "error": throw TVError.credentialRejected
+            case "error":
+                if key == nil, message["error"].string?.hasPrefix("403 ") == true { throw TVError.pairingDeclined }
+                throw TVError.credentialRejected
             default: continue
             }
         }
@@ -319,8 +352,8 @@ public actor LGWebOSDriver: TVDriver {
         "appVersion": .string("1.0"),
         "permissions": .array([
             "CONTROL_AUDIO", "CONTROL_INPUT_JOYSTICK", "CONTROL_INPUT_MEDIA_PLAYBACK", "CONTROL_INPUT_TV",
-            "CONTROL_MOUSE_AND_KEYBOARD", "CONTROL_POWER", "LAUNCH", "READ_CURRENT_CHANNEL",
-            "READ_NETWORK_STATE", "WRITE_NOTIFICATION_TOAST"
+            "CONTROL_MOUSE_AND_KEYBOARD", "CONTROL_POWER", "LAUNCH", "READ_CURRENT_CHANNEL", "READ_INPUT_DEVICE_LIST",
+            "READ_NETWORK_STATE", "READ_INSTALLED_APPS", "WRITE_NOTIFICATION_TOAST"
         ].map(SocketJSON.string)),
         "signed": .object([
             "appId": .string("com.tvremote.remote"),

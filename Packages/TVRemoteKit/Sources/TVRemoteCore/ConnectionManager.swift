@@ -21,11 +21,13 @@ public actor ConnectionManager {
     private var phase: ConnectionState = .idle
     private var activeBrowses = 0
     private var generation = UUID()
+    private var recoveryWakeGeneration = UUID()
     private var driver: (any TVDriver)?
     private var commandInFlight = false
 
     public private(set) var currentDevice: TVDevice?
     public nonisolated var state: AsyncStream<ConnectionState> { states.subscribe() }
+    public nonisolated var currentState: ConnectionState { states.latest }
 
     public init(
         drivers: [TVDriverFactory],
@@ -75,7 +77,7 @@ public actor ConnectionManager {
         }
     }
 
-    public func connect(_ tv: TVDevice) async throws {
+    public func connect(_ tv: TVDevice, allowWake: Bool = true) async throws {
         let factory = try factory(for: tv.id.platform)
         let token = begin(tv: tv)
         do {
@@ -87,7 +89,8 @@ public actor ConnectionManager {
                 guard Self.isRecoverable(error) else { throw error }
                 try ensureCurrent(token)
                 transition(.degraded)
-                try await recover(tv, credential: credential, factory: factory, token: token, initialError: error)
+                try await recover(tv, credential: credential, factory: factory, token: token,
+                                  attemptWake: allowWake, initialError: error)
             }
         } catch {
             fail(error, token: token)
@@ -126,16 +129,67 @@ public actor ConnectionManager {
         try await perform { try await $0.keepAlive() }
     }
 
+    public func inputs() async throws -> [TVInput] {
+        try await read { try await $0.inputs() }
+    }
+
+    public func apps() async throws -> [TVApp] {
+        try await read { try await $0.apps() }
+    }
+
+    public func selectInput(_ input: TVInput) async throws {
+        try await perform { try await $0.selectInput(input) }
+    }
+
+    private func read<T: Sendable>(_ operation: @Sendable (any TVDriver) async throws -> T) async throws -> T {
+        guard phase == .ready, let driver else { throw TVError.notConnected }
+        guard !commandInFlight else { throw TVError.busy }
+        let token = generation
+        commandInFlight = true
+        defer { if generation == token { commandInFlight = false } }
+        let value = try await operation(driver)
+        try ensureCurrent(token)
+        return value
+    }
+
     public func wake() async throws {
         guard let tv = currentDevice else { throw TVError.notConnected }
+        if tv.capabilities.contains(.controlWake), !tv.capabilities.contains(.networkWake) {
+            let token = generation
+            if phase == .connecting || phase == .recovering {
+                for await _ in state {
+                    try ensureCurrent(token)
+                    if phase != .connecting && phase != .recovering { break }
+                }
+                try ensureCurrent(token)
+                switch phase {
+                case .ready: break
+                case .needsRepair: throw TVError.pairingRequired
+                case .asleep: throw TVError.asleep
+                default: throw TVError.unreachable
+                }
+            }
+            try await send(.powerOn)
+            return
+        }
         guard tv.capabilities.contains(.networkWake) else { throw TVError.notSupported }
         let factory = try factory(for: tv.id.platform)
+        let isReconnecting = phase == .connecting || phase == .recovering
+        if isReconnecting {
+            let token = generation
+            try await factory.makeDriver().wake(tv)
+            try ensureCurrent(token)
+            recoveryWakeGeneration = UUID()
+            guard phase == .asleep || phase == .degraded else { return }
+        }
         let token = begin(tv: tv)
         do {
             let credential = try await loadCredential(for: tv)
             try ensureCurrent(token)
-            try await factory.makeDriver().wake(tv)
-            try ensureCurrent(token)
+            if !isReconnecting {
+                try await factory.makeDriver().wake(tv)
+                try ensureCurrent(token)
+            }
             try await recover(tv, credential: credential, factory: factory, token: token, attemptWake: false)
         } catch {
             fail(error, token: token, fallback: .asleep)
@@ -269,8 +323,10 @@ public actor ConnectionManager {
 
         var lastError = initialError
         var foundAsleep = initialError as? TVError == .asleep
-        for delay in retryDelays {
-            try await clock.sleep(for: delay)
+        var wakeGeneration = recoveryWakeGeneration
+        var retry = 0
+        while retry < retryDelays.count {
+            try await clock.sleep(for: retryDelays[retry])
             try ensureCurrent(token)
             do {
                 try await open(currentDevice ?? tv, credential: credential, factory: factory, token: token)
@@ -280,6 +336,12 @@ public actor ConnectionManager {
                 try ensureCurrent(token)
                 if error as? TVError == .asleep { foundAsleep = true }
                 lastError = error
+                if wakeGeneration == recoveryWakeGeneration {
+                    retry += 1
+                } else {
+                    wakeGeneration = recoveryWakeGeneration
+                    retry = 0
+                }
             }
         }
         if foundAsleep { throw TVError.asleep }

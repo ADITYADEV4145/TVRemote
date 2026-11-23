@@ -31,6 +31,21 @@ final class RemoteKeyTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 3))
     }
 
+    func testAddingAnotherTVStartsAtDiscovery() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Find my TV"].tap()
+        app.buttons["Find TVs"].tap()
+        select("Living Room", in: app)
+        app.buttons["Open remote"].tap()
+        app.tabBars.buttons["My TVs"].tap()
+        app.buttons["Add a TV"].tap()
+        XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Find my TV"].exists)
+        app.navigationBars.buttons["Back"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Add a TV"].waitForExistence(timeout: 5))
+    }
+
     func testPairingPreservesWrongCodeAndLandsOnFreeRemote() {
         continueAfterFailure = false
         let app = launchSetup()
@@ -65,7 +80,7 @@ final class RemoteKeyTests: XCTestCase {
 
     private func launchSetup() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-hasSeenWelcome", "NO", "-appearance", "Light", "-largeControls", "NO"]
+        app.launchArguments = ["-demo", "-hasSeenWelcome", "NO", "-appearance", "Light", "-largeControls", "NO"]
         app.launch()
         return app
     }

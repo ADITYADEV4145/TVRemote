@@ -7,6 +7,8 @@ package final class StateFeed: @unchecked Sendable {
 
     package init() {}
 
+    package var latest: ConnectionState { lock.withLock { current } }
+
     package func subscribe() -> AsyncStream<ConnectionState> {
         AsyncStream(bufferingPolicy: .bufferingNewest(16)) { continuation in
             let id = UUID()

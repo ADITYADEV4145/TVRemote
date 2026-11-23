@@ -1,0 +1,672 @@
+import Foundation
+import Network
+import Observation
+import TVRemoteKit
+
+@MainActor
+@Observable
+final class RemoteViewModel {
+    struct RecentCommand: Identifiable {
+        let id = UUID()
+        let timestamp = Date()
+        let title: String
+        let deviceID: TVDevice.ID?
+    }
+
+    struct CommandFailure {
+        let title: String
+        let reason: String
+    }
+
+    private(set) var state: ConnectionState = .idle
+    private(set) var devices: [TVDevice] = []
+    private(set) var savedDevices: [TVDevice] = []
+    private(set) var currentDevice: TVDevice?
+    private(set) var pairingDevice: TVDevice?
+    private(set) var pairingPrompt: SetupPairing?
+    private(set) var pairingCompletion = 0
+    private(set) var isDiscovering = false
+    private(set) var isConnecting = false
+    private(set) var feedback: String?
+    private(set) var error: String?
+    private(set) var recentCommands: [RecentCommand] = []
+    private(set) var commandFailures: [TVDevice.ID: CommandFailure] = [:]
+    private(set) var checkDurations: [TVDevice.ID: Duration] = [:]
+    private(set) var networkStatus = "Not checked"
+    private(set) var networkPermission = "Not checked"
+
+    let isDemo: Bool
+    private let driver: MockTVDriver?
+    private let live: LiveTVSession?
+    #if DEBUG
+    var approvalResponseDelay: Duration?
+    #endif
+    private var demoCredentials: [TVDevice.ID: String] = [:]
+    private var unavailableChannelTVs: Set<TVDevice.ID> = []
+    private var keyboardDrafts: [TVDevice.ID: String] = [:]
+    private var wakeInFlight = false
+    private var messageGeneration = 0
+    @ObservationIgnored private var stateTask: Task<Void, Never>?
+    @ObservationIgnored private var pairingTask: Task<Bool, Never>?
+    @ObservationIgnored private var codeReply: CheckedContinuation<PairingResponse, any Error>?
+    @ObservationIgnored private var pairingAttempt = UUID()
+    @ObservationIgnored private var commandTail: Task<Void, Never>?
+    @ObservationIgnored private var commandSequence = 0
+    @ObservationIgnored private var selectionGeneration = 0
+    @ObservationIgnored private var healthCheck: Task<Void, Never>?
+    @ObservationIgnored private var restoredSelection = false
+
+    init(driver: MockTVDriver, isDemo: Bool = true) {
+        self.driver = driver
+        live = nil
+        self.isDemo = isDemo
+        let updates = driver.state
+        stateTask = Task { [weak self] in
+            for await update in updates { self?.state = update }
+        }
+    }
+
+    init(live: LiveTVSession) {
+        self.live = live
+        driver = nil
+        isDemo = false
+        savedDevices = live.savedDevices
+        let updates = live.state
+        stateTask = Task { [weak self] in
+            for await _ in updates { self?.state = ConnectionState(live.manager.currentState) }
+        }
+    }
+
+    deinit { stateTask?.cancel() }
+
+    func restoreSelection() async {
+        guard !restoredSelection, !isConnecting, currentDevice == nil else { return }
+        restoredSelection = true
+        guard let live, let id = live.lastSelectedID, let tv = live.device(id),
+              let saved = savedDevices.first(where: { $0.id == id }) else { return }
+        currentDevice = saved
+        isConnecting = true
+        defer { isConnecting = false }
+        do {
+            try await live.manager.connect(tv, allowWake: false)
+            await didConnect(using: live)
+        } catch is CancellationError {
+            restoredSelection = false
+            currentDevice = nil
+        } catch {
+            state = ConnectionState(live.manager.currentState)
+            self.error = connectionFailure(error, for: saved)
+        }
+    }
+
+    var canControl: Bool { state == .ready && currentDevice != nil && !isConnecting }
+    var canChangeChannel: Bool {
+        canControl && currentDevice.map { !unavailableChannelTVs.contains($0.id) } == true
+    }
+    var supportsInputMenu: Bool { capabilities.contains(.inputMenu) }
+    var supportsInputSelection: Bool { capabilities.contains(.inputSelection) }
+    var supportsAppList: Bool { capabilities.contains(.appList) }
+    var supportsAppLinks: Bool {
+        capabilities.contains(.launch) && currentDevice.flatMap { live?.device($0.id)?.id.platform } == .googleTV
+    }
+
+    private var capabilities: TVCapabilities {
+        guard let id = currentDevice?.id else { return [] }
+        return live?.device(id)?.capabilities ?? []
+    }
+    var canSearch: Bool {
+        canControl && supportsSearch
+    }
+    var supportsSearch: Bool { driver != nil || capabilities.contains(.search) }
+    var supportsTyping: Bool { capabilities.contains(.keyboard) && !supportsSearch }
+    var keyboardDraft: String {
+        get { currentDevice.flatMap { keyboardDrafts[$0.id] } ?? "" }
+        set { if let id = currentDevice?.id { keyboardDrafts[id] = newValue } }
+    }
+    var canPower: Bool { !wakeInFlight && (canControl || canWake) }
+    var powerUnavailableReason: String? {
+        guard [.recovering, .asleep, .degraded].contains(state),
+              let device = currentDevice.flatMap({ live?.device($0.id) }),
+              device.id.platform == .samsung || device.id.platform == .lg,
+              device.wakeAddress == nil else { return nil }
+        return "Power needs a saved TV MAC address."
+    }
+
+    private var canWake: Bool {
+        guard currentDevice != nil, !isConnecting || state == .recovering else { return false }
+        if live == nil { return state == .asleep }
+        guard [.connecting, .recovering, .asleep, .degraded].contains(state) else { return false }
+        return !capabilities.intersection([.networkWake, .controlWake]).isEmpty
+    }
+    var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
+    var supportsManualAddress: Bool { true }
+    var awaitingTVApproval: Bool { pairingPrompt == .approval && isConnecting }
+
+    func monitor(clock: any ConnectionClock = SystemConnectionClock()) async {
+        guard let live else { return }
+        while !Task.isCancelled {
+            do { try await clock.sleep(for: .seconds(2)) } catch { return }
+            guard currentDevice != nil, !isConnecting, !wakeInFlight, state == .ready || state == .degraded,
+                  commandTail == nil, healthCheck == nil else { continue }
+            let check = Task {
+                let started = ContinuousClock.now
+                let selectedID = currentDevice?.id
+                do {
+                    try await live.manager.checkConnection()
+                    if let selectedID, selectedID == currentDevice?.id,
+                       live.device(selectedID)?.id.platform != .googleTV {
+                        checkDurations[selectedID] = started.duration(to: .now)
+                    }
+                } catch {
+                    if let selectedID, selectedID == currentDevice?.id, error as? TVError != .busy,
+                       !(error is CancellationError), commandFailures[selectedID] == nil {
+                        commandFailures[selectedID] = CommandFailure(title: "Connection check", reason: Self.describe(error))
+                    }
+                }
+                if let device = await live.manager.currentDevice, currentDevice != nil, !isConnecting {
+                    currentDevice = live.save(device)
+                    savedDevices = live.savedDevices
+                }
+            }
+            healthCheck = check
+            await check.value
+            healthCheck = nil
+        }
+    }
+
+    func observeNetwork() async {
+        guard live != nil else { return }
+        let monitor = NWPathMonitor()
+        defer { monitor.cancel() }
+        let (paths, feed) = AsyncStream<NWPath>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        monitor.pathUpdateHandler = { feed.yield($0) }
+        monitor.start(queue: DispatchQueue(label: "TVRemote.NetworkDiagnostics"))
+        for await path in paths {
+            networkPermission = path.status == .unsatisfied && path.unsatisfiedReason == .localNetworkDenied
+                ? "Access denied" : "Not checked"
+            if path.status != .satisfied { networkStatus = "No active network path" }
+            else if path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet) {
+                networkStatus = "Wi-Fi or Ethernet path available"
+            } else { networkStatus = "Network path available; TV reachability not verified" }
+        }
+    }
+
+    func clearMessages() {
+        messageGeneration += 1
+        feedback = nil
+        error = nil
+    }
+
+    #if DEBUG
+    // Explicit design fixtures, never compiled into a Release build.
+    func prepareDesignPreview(state: ConnectionState = .ready, pairing: Bool = false) async {
+        await discover()
+        guard devices.count >= 2 else { return }
+        _ = await select(devices[1])
+        _ = await submit(code: MockTVDriver.demoCode)
+        _ = await select(devices[0])
+        if pairing {
+            await forget(devices[1])
+            _ = await select(devices[1])
+        }
+        // Let the driver's last connection notification drain before selecting a fixture state.
+        await Task.yield()
+        self.state = state
+        clearMessages()
+    }
+    #endif
+
+    func discover() async {
+        guard !isDiscovering else { return }
+        isDiscovering = true
+        defer { isDiscovering = false }
+        if let live {
+            for await device in live.manager.discover() { show(live.remember(device)) }
+        } else if let driver {
+            for await device in driver.discover() { show(device) }
+        }
+    }
+
+    private func show(_ device: TVDevice) {
+        if let index = devices.firstIndex(where: { $0.id == device.id }) {
+            devices[index] = device
+        } else {
+            devices.append(device)
+        }
+    }
+
+    func find(address: String, matching selectedID: String? = nil) async -> Bool {
+        guard !isConnecting else { return false }
+        let address = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { return false }
+        error = nil
+        let device: TVDevice
+        isConnecting = true
+        do {
+            if let live { device = try await live.find(address, matching: selectedID) }
+            else if let driver { device = try await driver.device(at: address) }
+            else { return false }
+        } catch {
+            self.error = Self.describe(error)
+            isConnecting = false
+            return false
+        }
+        isConnecting = false
+        return await select(device)
+    }
+
+    func select(_ device: TVDevice) async -> Bool {
+        guard !isConnecting else { return false }
+        selectionGeneration += 1
+        unavailableChannelTVs.removeAll()
+        cancelPairing()
+        pairingDevice = nil
+        error = nil
+        if let live { return await selectLive(device, using: live) }
+        if device.requiresPairingCode, demoCredentials[device.id] == nil {
+            pairingDevice = device
+            pairingPrompt = .code
+            return false
+        }
+        return await connect(device, code: nil)
+    }
+
+    func submit(code: String) async -> Bool {
+        guard let device = pairingDevice, !isConnecting else { return false }
+        error = nil
+        let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let live, let selected = live.device(device.id) {
+            guard let reply = codeReply else {
+                startPairing(device, selected: selected, using: live)
+                return false
+            }
+            codeReply = nil
+            isConnecting = true
+            reply.resume(returning: .code(code))
+            return await pairingTask?.value ?? false
+        }
+        return await connect(device, code: code)
+    }
+
+    func cancelPairing() {
+        if pairingTask != nil {
+            pairingAttempt = UUID()
+            pairingTask?.cancel()
+            pairingTask = nil
+            codeReply?.resume(throwing: CancellationError())
+            codeReply = nil
+            isConnecting = false
+            if live != nil {
+                currentDevice = nil
+                state = .idle
+            }
+        }
+        pairingDevice = nil
+        pairingPrompt = nil
+        error = nil
+    }
+
+    func reconnect() async -> Bool {
+        guard let device = currentDevice else { return false }
+        if state == .needsRepair { demoCredentials.removeValue(forKey: device.id) }
+        return await select(devices.first(where: { $0.id == device.id }) ?? device)
+    }
+
+    var canTryPairingAgain: Bool {
+        state == .degraded && currentDevice.flatMap { live?.device($0.id)?.id.platform } == .googleTV
+    }
+
+    var canForgetAfterConnectionFailure: Bool {
+        guard let device = currentDevice, savedDevices.contains(where: { $0.id == device.id }) else { return false }
+        return state == .needsRepair || canTryPairingAgain
+    }
+
+    func tryPairingAgain() {
+        guard canTryPairingAgain, !isConnecting, let live, let device = currentDevice,
+              let selected = live.device(device.id) else { return }
+        selectionGeneration += 1
+        startPairing(device, selected: selected, using: live)
+    }
+
+    func retryTVApproval() {
+        guard !isConnecting, pairingPrompt == .approval, let live, let device = pairingDevice,
+              let selected = live.device(device.id) else { return }
+        startPairing(device, selected: selected, using: live, initialPrompt: .approval)
+    }
+
+    func forget(_ device: TVDevice) async {
+        keyboardDrafts.removeValue(forKey: device.id)
+        guard !isConnecting else { return }
+        if let live {
+            do { try await live.forget(device.id) }
+            catch { self.error = Self.describe(error); return }
+        }
+        demoCredentials.removeValue(forKey: device.id)
+        commandFailures.removeValue(forKey: device.id)
+        checkDurations.removeValue(forKey: device.id)
+        savedDevices.removeAll { $0.id == device.id }
+        if pairingDevice?.id == device.id { cancelPairing() }
+        guard currentDevice?.id == device.id else { return }
+
+        selectionGeneration += 1
+        isConnecting = true
+        currentDevice = nil
+        state = .idle
+        clearMessages()
+        if let live { await live.manager.disconnect() }
+        else { await driver?.disconnect() }
+        isConnecting = false
+    }
+
+    func rename(_ device: TVDevice, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let live, !name.isEmpty else { return }
+        live.rename(device.id, to: name)
+        savedDevices = live.savedDevices
+        if currentDevice?.id == device.id {
+            currentDevice = savedDevices.first { $0.id == device.id }
+        }
+    }
+
+    func send(_ key: RemoteKey) async {
+        let changesChannel = key == .channelUp || key == .channelDown
+        if changesChannel && !canChangeChannel { return }
+        if key == .power && !canPower { return }
+        if key == .power, canWake, let device = currentDevice {
+            wakeInFlight = true
+            defer { wakeInFlight = false }
+            await runCommand("Wake TV", feedback: "Wake signal sent", whileConnecting: true) {
+                if let live {
+                    try await live.manager.wake()
+                } else {
+                    try await driver?.wake(device)
+                }
+            }
+        } else if canControl {
+            await perform(key.commandTitle) { [self] in
+                guard !changesChannel || canChangeChannel else { throw TVError.notSupported }
+                let deviceID = currentDevice?.id
+                do {
+                    if let live { try await live.manager.send(key.wireKey) }
+                    else { try await driver?.send(key) }
+                } catch TVError.notSupported where changesChannel {
+                    if let deviceID { unavailableChannelTVs.insert(deviceID) }
+                    throw TVError.notSupported
+                }
+            }
+        }
+    }
+
+    func launch(_ app: AppID, name: String) async {
+        guard canControl else { return }
+        await perform(isDemo ? "Open \(name)" : "Open app", feedback: "Opening \(name)") { [self] in
+            if let live { try await live.manager.launch(app) }
+            else { try await driver?.launch(app) }
+        }
+    }
+
+    func loadInputs() async throws -> [TVInput] {
+        guard canControl, supportsInputSelection, let live else { throw TVError.notSupported }
+        return try await enqueue { try await live.manager.inputs() }
+    }
+
+    func loadApps() async throws -> [TVApp] {
+        guard canControl, supportsAppList, let live else { throw TVError.notSupported }
+        return try await enqueue { try await live.manager.apps() }
+    }
+
+    func selectInput(_ input: TVInput) async {
+        guard canControl, supportsInputSelection, let live else { return }
+        await perform("Switch input") {
+            try await live.manager.selectInput(input)
+            self.unavailableChannelTVs.removeAll()
+        }
+    }
+
+    func openTVInputMenu() async {
+        guard canControl, supportsInputMenu, let live else { return }
+        await perform("Open TV input menu") {
+            try await live.manager.send(.inputMenu)
+            self.unavailableChannelTVs.removeAll()
+        }
+    }
+
+    func search(_ query: String) async {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canSearch, !query.isEmpty else { return }
+        await perform("TV search", feedback: "Search sent to TV") { [self] in
+            if let live { try await live.manager.search(query) }
+            else { try await driver?.search(query) }
+        }
+    }
+
+    func typeOnTV(_ text: String) async {
+        guard canControl, supportsTyping, !text.isEmpty, let live else { return }
+        await perform("Type on TV", feedback: "Text sent to TV") {
+            try await live.manager.send(.text(text))
+        }
+    }
+
+    func movePointer(x: Double, y: Double) async {
+        guard canControl, supportsPointer, let pointer = driver else { return }
+        await perform("Move pointer") { try await pointer.movePointer(x: x, y: y) }
+    }
+
+    private func connect(_ device: TVDevice, code: String?) async -> Bool {
+        guard let driver else { return false }
+        isConnecting = true
+        error = nil
+        defer { isConnecting = false }
+        do {
+            let credential: String
+            if let saved = demoCredentials[device.id] {
+                credential = saved
+            } else if let code {
+                credential = try await driver.pair(device, code: code)
+            } else {
+                credential = try await driver.pair(device)
+            }
+            try await driver.connect(device, credential)
+            demoCredentials[device.id] = credential
+            currentDevice = device
+            if let index = savedDevices.firstIndex(where: { $0.id == device.id }) {
+                savedDevices[index] = device
+            } else {
+                savedDevices.append(device)
+            }
+            pairingDevice = nil
+            pairingPrompt = nil
+            feedback = nil
+            return true
+        } catch {
+            self.error = Self.describe(error)
+            return false
+        }
+    }
+
+    private func selectLive(_ device: TVDevice, using live: LiveTVSession) async -> Bool {
+        guard let selected = live.device(device.id) else { return false }
+        isConnecting = true
+        currentDevice = savedDevices.first(where: { $0.id == device.id })
+        do {
+            try await live.manager.connect(selected, allowWake: false)
+            await didConnect(using: live)
+            isConnecting = false
+            return true
+        } catch TVError.pairingRequired {
+            startPairing(device, selected: selected, using: live)
+        } catch TVError.credentialRejected {
+            startPairing(device, selected: selected, using: live)
+        } catch {
+            state = ConnectionState(live.manager.currentState)
+            self.error = connectionFailure(error, for: device)
+            isConnecting = false
+        }
+        return false
+    }
+
+    private func startPairing(_ device: TVDevice, selected: LiveTVSession.Device,
+                              using live: LiveTVSession, message: String? = nil, initialPrompt: SetupPairing? = nil) {
+        let attempt = UUID()
+        pairingAttempt = attempt
+        isConnecting = true
+        pairingPrompt = initialPrompt
+        error = message
+        pairingTask = Task { [weak self] in
+            do {
+                try await live.manager.pair(selected) { [weak self] prompt in
+                    guard let self else { throw CancellationError() }
+                    return try await self.respond(to: prompt, device: device, attempt: attempt)
+                }
+                guard let self, self.pairingAttempt == attempt else { return false }
+                let needsCompletionEvent = self.pairingPrompt != .code
+                await self.didConnect(using: live)
+                if needsCompletionEvent { self.pairingCompletion += 1 }
+                self.isConnecting = false
+                self.pairingTask = nil
+                return true
+            } catch {
+                guard let self, self.pairingAttempt == attempt else { return false }
+                self.isConnecting = false
+                self.pairingTask = nil
+                let failure = error as? TVError
+                if failure == .pairingDeclined, selected.id.platform == .lg || selected.id.platform == .samsung {
+                    self.pairingDevice = device
+                    self.pairingPrompt = .approval
+                }
+                if self.pairingPrompt == .code, failure == .credentialRejected || failure == .invalidCommand {
+                    self.startPairing(device, selected: selected, using: live,
+                                      message: "That code didn’t match. Check the new code shown on your TV.")
+                } else {
+                    self.error = Self.describe(error)
+                }
+                return false
+            }
+        }
+    }
+
+    private func respond(to prompt: PairingPrompt, device: TVDevice, attempt: UUID) async throws -> PairingResponse {
+        try Task.checkCancellation()
+        guard pairingAttempt == attempt else { throw CancellationError() }
+        pairingDevice = device
+        switch prompt {
+        case .approveOnTV:
+            pairingPrompt = .approval
+            #if DEBUG
+            if let approvalResponseDelay { try await Task.sleep(for: approvalResponseDelay) }
+            #endif
+            return .acknowledged
+        case .enterCode:
+            pairingPrompt = .code
+            isConnecting = false
+            return try await withCheckedThrowingContinuation { codeReply = $0 }
+        }
+    }
+
+    private func didConnect(using live: LiveTVSession) async {
+        guard let connected = await live.manager.currentDevice else { return }
+        let saved = live.save(connected)
+        currentDevice = saved
+        live.lastSelectedID = saved.id
+        savedDevices = live.savedDevices
+        state = .ready
+        pairingDevice = nil
+        pairingPrompt = nil
+        feedback = nil
+        error = nil
+    }
+
+    private func connectionFailure(_ error: any Error, for device: TVDevice) -> String {
+        let message = Self.describe(error)
+        if savedDevices.contains(where: { $0.id == device.id }),
+           live?.device(device.id)?.id.platform == .googleTV {
+            return "\(message) If reconnecting doesn’t work, open Fix connection to pair again or forget this TV and add it again."
+        }
+        return message
+    }
+
+    static func describe(_ error: any Error) -> String {
+        switch error as? TVError {
+        case .notConnected: "Connect to your TV and try again."
+        case .invalidAddress: "Enter a TV’s IP address, optionally followed by its control port."
+        case .invalidResponse: "The TV didn’t send the expected response. Try again."
+        case .invalidCommand: "The request couldn’t be sent to this TV."
+        case .busy: "The TV is already handling a request. Try again in a moment."
+        case .timedOut, .unreachable: "The TV didn’t respond. Check that it is on and connected."
+        case .notSupported: "This command isn’t available for this connection."
+        case .asleep: "The TV is asleep. Wake it and try again."
+        case .identityMismatch: "This connection doesn’t match the saved TV."
+        case .credentialRejected, .pairingRequired: "Pair again with the TV to continue."
+        case .pairingDeclined: "The TV declined the pairing request."
+        case .requestFailed: "The TV couldn’t complete the request. Try again."
+        case .credentialStoreFailure: "The app couldn’t access the saved pairing on this iPhone. Try again."
+        case nil:
+            if let failure = error as? LiveTVSession.Failure { failure.localizedDescription }
+            else if let failure = error as? MockTVDriver.Failure { failure.localizedDescription }
+            else { "The connection couldn’t be completed. Try again." }
+        }
+    }
+
+    private func perform(_ command: String, feedback message: String? = nil,
+                         action: @escaping @MainActor () async throws -> Void) async {
+        try? await enqueue { [self] in
+            await runCommand(command, feedback: message, action: action)
+        }
+    }
+
+    private func enqueue<T: Sendable>(_ action: @escaping @MainActor () async throws -> T) async throws -> T {
+        let previous = commandTail
+        let selection = selectionGeneration
+        commandSequence += 1
+        let sequence = commandSequence
+        let task = Task {
+            await previous?.value
+            await healthCheck?.value
+            try Task.checkCancellation()
+            guard selectionGeneration == selection else { throw CancellationError() }
+            return try await action()
+        }
+        commandTail = Task { _ = await task.result }
+        defer { if commandSequence == sequence { commandTail = nil } }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    private func runCommand(_ command: String, feedback message: String?, whileConnecting: Bool = false,
+                            action: @MainActor () async throws -> Void) async {
+        guard !isConnecting || whileConnecting else { return }
+        let generation = messageGeneration
+        let deviceID = currentDevice?.id
+        error = nil
+        do {
+            try await action()
+            recentCommands.insert(RecentCommand(title: command, deviceID: deviceID), at: 0)
+            if recentCommands.count > 20 { recentCommands.removeLast() }
+            if messageGeneration == generation { feedback = message }
+        } catch {
+            if let deviceID, !(error is CancellationError) {
+                commandFailures[deviceID] = CommandFailure(title: command, reason: Self.describe(error))
+            }
+            guard messageGeneration == generation else { return }
+            feedback = nil
+            self.error = Self.describe(error)
+        }
+    }
+}
+
+private extension RemoteKey {
+    var commandTitle: String {
+        switch self {
+        case .select: "OK"
+        case .volumeUp: "Volume up"
+        case .volumeDown: "Volume down"
+        case .channelUp: "Channel up"
+        case .channelDown: "Channel down"
+        case .playPause: "Play or pause"
+        default: rawValue.capitalized
+        }
+    }
+}

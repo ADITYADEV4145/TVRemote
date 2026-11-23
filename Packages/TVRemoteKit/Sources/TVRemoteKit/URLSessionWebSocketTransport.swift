@@ -12,7 +12,7 @@ public struct URLSessionWebSocketTransport: WebSocketTransport {
     public func open(_ url: URL, trust: TLSPeerTrust) async throws -> any WebSocketConnection {
         let delegate = TVSessionDelegate(trust: trust)
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 3
+        config.timeoutIntervalForRequest = 5
         config.httpCookieStorage = nil
         config.urlCache = nil
         let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -21,7 +21,7 @@ public struct URLSessionWebSocketTransport: WebSocketTransport {
         let connection = SessionWebSocket(session: session, socket: socket, delegate: delegate)
         socket.resume()
         do {
-            try await connection.socketOperation { try await delegate.waitForWebSocket() }
+            try await connection.socketOperation(timeout: .seconds(5)) { try await delegate.waitForWebSocket() }
             return connection
         } catch {
             await connection.close()
@@ -71,7 +71,7 @@ private final class SessionWebSocket: WebSocketConnection {
     }
 
     func ping() async throws {
-        try await socketOperation {
+        try await socketOperation(timeout: .seconds(5)) {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 self.socket.sendPing { error in
                     if let error { continuation.resume(throwing: self.delegate.map(error)) }

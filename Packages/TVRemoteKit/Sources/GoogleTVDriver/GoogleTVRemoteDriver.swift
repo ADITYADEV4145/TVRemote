@@ -11,6 +11,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
     private let clientName: String
     private nonisolated let states = StateFeed()
     private var session: GoogleTVRemoteSession?
+    private var device: TVDevice?
     private var listener: Task<Void, Never>?
     private var generation = UUID()
 
@@ -57,7 +58,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
             id: identity(for: connection.peer),
             name: connection.deviceName ?? "Google TV",
             endpoint: TVEndpoint(host: endpoint.host, port: Self.controlPort),
-            capabilities: [.remoteKeys, .launch]
+            capabilities: [.remoteKeys, .controlWake, .inputMenu]
         )
     }
 
@@ -96,6 +97,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
         listener?.cancel()
         listener = nil
         session = nil
+        device = nil
         states.publish(.connecting)
 
         do {
@@ -106,9 +108,13 @@ public actor GoogleTVRemoteDriver: TVDriver {
                 let wire = GoogleTVWire(stream: connection.stream)
                 let remote = GoogleTVRemoteSession(wire: wire)
                 try await remote.start()
+                var capabilities: TVCapabilities = [.remoteKeys, .controlWake, .inputMenu]
+                if await remote.supportsAppLinks { capabilities.insert(.launch) }
+                if await remote.supportsText { capabilities.insert(.keyboard) }
                 try Task.checkCancellation()
                 guard generation == token else { throw CancellationError() }
                 session = remote
+                device = TVDevice(id: tv.id, name: tv.name, endpoint: endpoint, capabilities: capabilities)
                 states.publish(.ready)
                 listener = Task { [states] in await remote.listen(states: states) }
             } catch {
@@ -125,8 +131,11 @@ public actor GoogleTVRemoteDriver: TVDriver {
 
     public func send(_ key: RemoteKey) async throws {
         guard let session else { throw TVError.notConnected }
-        try await session.sendKey(Self.keyCode(key))
+        if case .text(let text) = key { try await session.sendText(text) }
+        else { try await session.sendKey(Self.keyCode(key)) }
     }
+
+    public func connectedDevice() async -> TVDevice? { device }
 
     public func launch(_ app: AppID) async throws {
         guard let session else { throw TVError.notConnected }
@@ -164,6 +173,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
         case .back: 4
         case .home: 3
         case .options: 82
+        case .inputMenu: 178
         case .volumeUp: 24
         case .volumeDown: 25
         case .mute: 164

@@ -38,7 +38,7 @@ public actor SamsungTizenDriver: TVDriver {
         let socket = try await open(live, token: nil, trust: secure ? .pairing : .system)
         do {
             guard try await prompt(.approveOnTV) == .acknowledged else { throw TVError.invalidCommand }
-            let token = try await authorize(socket, timeout: .seconds(60))
+            let token = try await authorize(socket, timeout: .seconds(60), pairing: true)
             let certificate = socket.peerCertificate
             guard !secure || certificate != nil else { throw TVError.invalidResponse }
             await socket.close()
@@ -67,7 +67,7 @@ public actor SamsungTizenDriver: TVDriver {
             guard live.id == tv.id else { throw TVError.identityMismatch }
             let socket = try await open(live, token: token, trust: certificate.map(TLSPeerTrust.pinned) ?? .system)
             do {
-                _ = try await authorize(socket, timeout: .seconds(3))
+                _ = try await authorize(socket, timeout: .seconds(5))
             } catch {
                 await socket.close()
                 throw error
@@ -88,6 +88,19 @@ public actor SamsungTizenDriver: TVDriver {
     public func connectedDevice() -> TVDevice? { device }
 
     public func send(_ key: RemoteKey) async throws {
+        if case .text(let text) = key {
+            guard let connection, let device else { throw TVError.notConnected }
+            guard device.capabilities.contains(.keyboard) else { throw TVError.notSupported }
+            guard !text.isEmpty else { throw TVError.invalidCommand }
+            try await connection.sendJSON([
+                "method": .string("ms.remote.control"),
+                "params": .object([
+                    "Cmd": .string(Data(text.utf8).base64EncodedString()),
+                    "DataOfCmd": .string("base64"), "TypeOfRemote": .string("SendInputString")
+                ])
+            ])
+            return
+        }
         let code: String
         switch key {
         case .up: code = "KEY_UP"
@@ -98,6 +111,7 @@ public actor SamsungTizenDriver: TVDriver {
         case .back: code = "KEY_RETURN"
         case .home: code = "KEY_HOME"
         case .options: code = "KEY_MENU"
+        case .inputMenu: code = "KEY_SOURCE"
         case .volumeUp: code = "KEY_VOLUP"
         case .volumeDown: code = "KEY_VOLDOWN"
         case .mute: code = "KEY_MUTE"
@@ -126,7 +140,37 @@ public actor SamsungTizenDriver: TVDriver {
         ])
     }
 
-    public func launch(_ app: AppID) async throws { throw TVError.notSupported }
+    public func launch(_ app: AppID) async throws {
+        guard !app.rawValue.isEmpty else { throw TVError.invalidCommand }
+        guard let connection else { throw TVError.notConnected }
+        try await connection.sendJSON([
+            "method": .string("ms.channel.emit"),
+            "params": .object([
+                "event": .string("ed.apps.launch"), "to": .string("host"),
+                "data": .object(["appId": .string(app.rawValue), "action_type": .string("DEEP_LINK")])
+            ])
+        ])
+    }
+
+    public func apps() async throws -> [TVApp] {
+        guard let connection else { throw TVError.notConnected }
+        try await connection.sendJSON([
+            "method": .string("ms.channel.emit"),
+            "params": .object(["event": .string("ed.installedApp.get"), "to": .string("host")])
+        ])
+        let deadline = ContinuousClock.now + .seconds(3)
+        while ContinuousClock.now < deadline {
+            let reply = try await connection.receiveJSON(timeout: ContinuousClock.now.duration(to: deadline))
+            if reply["event"].string == "ms.error" { throw TVError.notSupported }
+            guard reply["event"].string == "ed.installedApp.get" else { continue }
+            guard case .array(let apps) = reply["data"]["data"] else { throw TVError.invalidResponse }
+            return apps.compactMap {
+                guard let id = $0["appId"].string, let name = $0["name"].string else { return nil }
+                return TVApp(id: AppID(rawValue: id), name: name)
+            }
+        }
+        throw TVError.timedOut
+    }
     public func search(_ query: String) async throws { throw TVError.notSupported }
 
     public func wake(_ tv: TVDevice) async throws {
@@ -142,7 +186,7 @@ public actor SamsungTizenDriver: TVDriver {
     private func inspect(
         _ endpoint: TVEndpoint, pairedPort: UInt16? = nil, certificate: Data? = nil
     ) async throws -> TVDevice {
-        let ports: [UInt16] = pairedPort.map { [$0] } ?? (endpoint.port == 8001 ? [8001, 8002] : [8002, 8001])
+        let ports: [UInt16] = pairedPort.map { [$0] } ?? (endpoint.port == 8001 ? [8001, 8002] : [8002])
         var last: any Error = TVError.unreachable
         for port in ports {
             do {
@@ -159,7 +203,8 @@ public actor SamsungTizenDriver: TVDriver {
                     throw TVError.invalidResponse
                 }
                 let address = (info["wifiMac"].string ?? info["mac"].string).flatMap(MACAddress.init(rawValue:))
-                var capabilities: TVCapabilities = .remoteKeys
+                var capabilities: TVCapabilities = [.remoteKeys, .inputMenu, .launch, .appList]
+                if info["ImeSyncedSupport"].bool == true { capabilities.insert(.keyboard) }
                 if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
                 return TVDevice(id: TVIdentity(platform: .samsung, identifier: id),
                                 name: info["name"].string ?? json["name"].string ?? "Samsung TV",
@@ -182,13 +227,14 @@ public actor SamsungTizenDriver: TVDriver {
         return try await sockets.open(url, trust: trust)
     }
 
-    private func authorize(_ socket: any WebSocketConnection, timeout: Duration) async throws -> String? {
+    private func authorize(_ socket: any WebSocketConnection, timeout: Duration, pairing: Bool = false) async throws -> String? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let json = try await socket.receiveJSON(timeout: ContinuousClock.now.duration(to: deadline))
             switch json["event"].string {
             case "ms.channel.connect": return json["data"]["token"].string
-            case "ms.channel.unauthorized", "ms.channel.timeOut": throw TVError.credentialRejected
+            case "ms.channel.unauthorized": throw pairing ? TVError.pairingDeclined : TVError.credentialRejected
+            case "ms.channel.timeOut": throw pairing ? TVError.timedOut : TVError.credentialRejected
             default: continue
             }
         }

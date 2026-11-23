@@ -1,9 +1,9 @@
 import SwiftUI
-import TVDriverKit
 
 struct SettingsScreen: View {
     @AppStorage("hapticsEnabled") private var haptics = true
     @AppStorage("largeControls") private var largeControls = false
+    var openRemote: () -> Void = {}
 
     var body: some View {
         ScreenBody {
@@ -15,7 +15,7 @@ struct SettingsScreen: View {
                 route("mic", "Voice", "On-device access and command help") { VoiceSettingsScreen() }
             }
             Panel {
-                route("wifi.exclamationmark", "Fix my connection", "Free help, whenever you need it") { DiagnosticsScreen() }
+                route("wifi.exclamationmark", "Fix my connection", "Free help, whenever you need it") { DiagnosticsScreen(openRemote: openRemote) }
                 route("tv", "Compatibility", "TV platforms and capabilities") { CompatibilityScreen() }
                 route("lock.shield", "Privacy", "Local by design") { PrivacyScreen() }
             }
@@ -28,7 +28,7 @@ struct SettingsScreen: View {
             NavigationLink("Design states") { DesignCatalogScreen() }
                 .frame(minHeight: 44)
             #endif
-            SupportingCopy(title: "The honest remote", detail: "Demo build. No ads, no purchases, no physical-TV control.")
+            SupportingCopy(title: "The honest remote", detail: "No ads or purchases. Connections were tested with simulated TVs only.")
         }
         .buttonStyle(.plain)
     }
@@ -81,16 +81,18 @@ struct VoiceSettingsScreen: View {
 }
 
 struct DiagnosticsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @State private var showRepair = false
+    @State private var editingAddress = false
+    var openRemote: () -> Void = {}
 
     var body: some View {
         ScreenBody {
             ScreenHeading("", "Fix my connection", "Let’s get you back to watching.")
             Panel {
                 DetailRow(icon: "tv", title: connection.currentDevice?.name ?? "No TV selected", detail: connection.state.rawValue)
-                DetailRow(icon: "wifi", title: "Local network", detail: connection.isDemo ? "Not checked · Demo mode" : "Not checked by this driver")
-                DetailRow(icon: "lock.shield", title: "Local Network permission", detail: "Not checked")
+                DetailRow(icon: "wifi", title: "Local network", detail: connection.isDemo ? "Not checked · Demo mode" : connection.networkStatus)
+                DetailRow(icon: "lock.shield", title: "Local Network permission", detail: connection.networkPermission)
                 DetailRow(icon: "key", title: "Pairing", detail: connection.state == .needsRepair ? "Needs authorization" : "Use the TV’s approval or code when asked")
             }
             if connection.currentDevice != nil {
@@ -100,6 +102,20 @@ struct DiagnosticsScreen: View {
                     }
                 }
                 .buttonStyle(PrimaryActionStyle()).disabled(connection.isConnecting)
+                if connection.canTryPairingAgain {
+                    Button("Try pairing again") { connection.tryPairingAgain() }
+                        .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
+                    SupportingCopy(title: "Pairing may need to be renewed",
+                                   detail: "Google TV can drop the connection without saying why. If reconnecting doesn’t work, try a new pairing code.")
+                }
+                if connection.canForgetAfterConnectionFailure, let device = connection.currentDevice {
+                    NavigationLink("Forget this TV") { ForgetTVScreen(device: device) }
+                        .buttonStyle(SecondaryActionStyle(destructive: true))
+                }
+                if !connection.isDemo, !connection.canControl {
+                    Button("Update TV address") { editingAddress = true }
+                        .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
+                }
             }
             NavigationLink("Connection details") { ConnectionDetailsScreen() }.buttonStyle(SecondaryActionStyle())
             Panel {
@@ -111,20 +127,37 @@ struct DiagnosticsScreen: View {
             ConnectionMessage()
         }
         .modifier(TaskSurface())
+        .task { await connection.observeNetwork() }
         .onAppear { connection.clearMessages() }
+        .onChange(of: connection.pairingPrompt) {
+            if connection.pairingPrompt != nil && !editingAddress { showRepair = true }
+        }
         .sheet(isPresented: $showRepair) {
-            NavigationStack { SetupScreen(initiallyStarted: true) { showRepair = false } }
+            NavigationStack {
+                SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code) {
+                    showRepair = false
+                    openRemote()
+                }
+            }
+        }
+        .sheet(isPresented: $editingAddress) {
+            NavigationStack {
+                SetupScreen(initiallyStarted: true, initialPage: .manual, movedDeviceID: connection.currentDevice?.id) {
+                    editingAddress = false
+                    openRemote()
+                }
+            }
         }
     }
 }
 
 struct ConnectionDetailsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     var device: TVDevice? = nil
 
     private var target: TVDevice? { device ?? connection.currentDevice }
     private var selected: Bool { target != nil && target?.id == connection.currentDevice?.id }
-    private var commands: [ConnectionManager.RecentCommand] {
+    private var commands: [RemoteViewModel.RecentCommand] {
         guard let target else { return [] }
         return connection.recentCommands.filter { $0.deviceID == target.id }
     }
@@ -136,7 +169,10 @@ struct ConnectionDetailsScreen: View {
                 DetailRow(icon: "tv", title: "TV", detail: target?.name ?? "None selected")
                 DetailRow(icon: "circle.dotted", title: "Driver state", detail: selected ? connection.state.rawValue : "Not selected")
                 DetailRow(icon: "testtube.2", title: "Mode", detail: connection.isDemo ? "In-process simulation" : "Live driver")
-                DetailRow(icon: "clock", title: "Latency", detail: "Not measured")
+                DetailRow(icon: "clock", title: "Last connection check", detail: checkTime)
+                if let id = target?.id, let failure = connection.commandFailures[id] {
+                    DetailRow(icon: "exclamationmark.circle", title: "Last failure: \(failure.title)", detail: failure.reason)
+                }
             }
             Text("Recent commands").font(.title3.weight(.semibold))
             Panel {
@@ -152,10 +188,17 @@ struct ConnectionDetailsScreen: View {
             }
         }.modifier(TaskSurface())
     }
+
+    private var checkTime: String {
+        guard let id = target?.id, let duration = connection.checkDurations[id] else { return "Not measured" }
+        let parts = duration.components
+        let milliseconds = parts.seconds * 1_000 + parts.attoseconds / 1_000_000_000_000_000
+        return "\(milliseconds) ms elapsed"
+    }
 }
 
 struct SupportPreviewScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @State private var includeCommands = false
 
     private var report: String {
@@ -186,8 +229,8 @@ struct CompatibilityScreen: View {
         ScreenBody {
             ScreenHeading("", "Will my TV work?", "A smart TV with network control is required.")
             Panel {
-                DetailRow(icon: "testtube.2", title: "Available in this build", detail: "Simulated Roku TV and Google TV only")
-                DetailRow(icon: "tv", title: "Planned first-release platforms", detail: "Roku, Google TV, Samsung Tizen and LG webOS")
+                DetailRow(icon: "testtube.2", title: "Tested with simulators only", detail: "Pairing and remote controls were tested on all four platforms")
+                DetailRow(icon: "tv", title: "Drivers in this build", detail: "Roku TV, Google TV, Samsung Tizen and LG webOS")
                 DetailRow(icon: "network.slash", title: "Hardware not validated", detail: "No physical TV was connected or tested")
             }
             SupportingCopy(title: "Not every TV is supported", detail: "An iPhone has no infrared blaster. Network control, model and firmware determine which features work.")
@@ -202,11 +245,11 @@ struct PrivacyScreen: View {
             ScreenHeading("", "Privacy", "Local by design.")
             Panel {
                 DetailRow(icon: "person.crop.circle.badge.checkmark", title: "No account", detail: "Use the local remote without signing in")
-                DetailRow(icon: "iphone", title: "On this iPhone", detail: "Appearance, favorites and scene drafts are stored locally")
+                DetailRow(icon: "iphone", title: "On this iPhone", detail: "Saved TVs, appearance, favorites and scene drafts are stored locally")
                 DetailRow(icon: "mic.slash", title: "No recording", detail: "This build never requests microphone or speech access")
                 DetailRow(icon: "hand.raised", title: "No automatic diagnostics", detail: "There is no telemetry service in this build")
             }
-            SupportingCopy(title: "Pairing in this demo", detail: "Simulated connections are held in memory and reset on app restart. Real pairing needs Keychain integration before release.")
+            SupportingCopy(title: "Saved connections", detail: "In normal use, pairing credentials stay in this iPhone’s Keychain. Saved TV names and network addresses stay in app storage so you can reconnect after a restart. Forgetting a TV removes its saved connection from this iPhone.")
             NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
         }.modifier(TaskSurface())
     }
@@ -225,7 +268,7 @@ struct UpgradeScreen: View {
             ScreenHeading("", title, "Your basic remote stays free.")
             if phase == .offer {
                 HeroCard(icon: "sparkles", title: "More, when you want it.",
-                         detail: "Multiple TVs, advanced voice and scenes are product directions, not purchasable features in this build.")
+                         detail: "Saving and switching between TVs is free. Plus cannot be purchased in this build.")
                 Panel {
                     Text("Illustrative plans").font(.headline)
                     plan("Yearly", "$14.99 / year", "Eligible 7-day trial shown only with StoreKit eligibility")

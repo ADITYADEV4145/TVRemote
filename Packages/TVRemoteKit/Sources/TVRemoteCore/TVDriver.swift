@@ -37,6 +37,10 @@ public struct TVCapabilities: OptionSet, Sendable, Hashable, Codable {
     public static let keyboard = Self(rawValue: 1 << 3)
     public static let networkWake = Self(rawValue: 1 << 4)
     public static let pointer = Self(rawValue: 1 << 5)
+    public static let controlWake = Self(rawValue: 1 << 6)
+    public static let inputMenu = Self(rawValue: 1 << 7)
+    public static let inputSelection = Self(rawValue: 1 << 8)
+    public static let appList = Self(rawValue: 1 << 9)
 }
 
 public struct TVDevice: Sendable, Hashable, Codable, Identifiable {
@@ -87,6 +91,17 @@ public enum RemoteKey: Sendable, Hashable, Codable {
     case digit(UInt8)
     case text(String)
     case delete
+    case inputMenu
+}
+
+public struct TVInput: Identifiable, Sendable, Equatable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
 }
 
 public struct AppID: RawRepresentable, Sendable, Hashable, Codable {
@@ -97,6 +112,16 @@ public struct AppID: RawRepresentable, Sendable, Hashable, Codable {
     }
 }
 
+public struct TVApp: Identifiable, Sendable, Equatable {
+    public let id: AppID
+    public let name: String
+
+    public init(id: AppID, name: String) {
+        self.id = id
+        self.name = name
+    }
+}
+
 public enum ConnectionState: Sendable, Equatable {
     case idle, discovering, connecting, ready, degraded, asleep, recovering, needsRepair
 }
@@ -104,7 +129,7 @@ public enum ConnectionState: Sendable, Equatable {
 public enum TVError: Error, Sendable, Equatable {
     case notConnected, notSupported, invalidAddress, invalidResponse
     case invalidCommand, busy, timedOut, unreachable, asleep, identityMismatch
-    case credentialRejected, pairingRequired
+    case credentialRejected, pairingRequired, pairingDeclined
     case requestFailed(status: Int)
     case credentialStoreFailure(status: Int)
 }
@@ -120,6 +145,9 @@ public protocol TVDriver: Sendable {
     func search(_ query: String) async throws
     func wake(_ tv: TVDevice) async throws
     func keepAlive() async throws
+    func inputs() async throws -> [TVInput]
+    func selectInput(_ input: TVInput) async throws
+    func apps() async throws -> [TVApp]
     var state: AsyncStream<ConnectionState> { get }
 }
 
@@ -131,4 +159,7 @@ extension TVDriver {
     }
 
     public func keepAlive() async throws {}
+    public func inputs() async throws -> [TVInput] { throw TVError.notSupported }
+    public func selectInput(_ input: TVInput) async throws { throw TVError.notSupported }
+    public func apps() async throws -> [TVApp] { throw TVError.notSupported }
 }

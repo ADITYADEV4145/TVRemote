@@ -49,7 +49,7 @@ private actor Transcript: HTTPTransport {
     let tv = try await driver.probe(endpoint)
     #expect(tv.id == TVIdentity(platform: .roku, identifier: "roku:abcd"))
     #expect(tv.name == "Family & Friends")
-    #expect(tv.capabilities == [.remoteKeys, .launch, .search, .keyboard, .networkWake])
+    #expect(tv.capabilities == [.remoteKeys, .launch, .search, .keyboard, .networkWake, .inputSelection, .appList])
     let credential = try await driver.pair(tv) { _ in
         Issue.record("Roku must not prompt for pairing.")
         return .acknowledged
@@ -120,6 +120,30 @@ private actor Transcript: HTTPTransport {
     await #expect(throws: TVError.invalidCommand) { try await driver.send(.digit(10)) }
     await #expect(throws: TVError.notSupported) { try await driver.send(.home) }
     #expect(await transport.requests.count == 4)
+}
+
+@Test func rokuListsOnlyTVInputsAndLaunchesTheReportedInput() async throws {
+    let xml = #"<apps><app id="12" type="appl">Netflix</app><app id="tvinput.hdmi1" type="tvin">HDMI 1</app></apps>"#
+    let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(),
+                                HTTPResponse(status: 200, body: Data(xml.utf8)),
+                                deviceInfo(), HTTPResponse(status: 200)])
+    let driver = RokuECPDriver(http: transport)
+    let tv = try await driver.probe(endpoint)
+    try await driver.connect(tv, .none)
+    let inputs = try await driver.inputs()
+    #expect(inputs == [TVInput(id: "tvinput.hdmi1", name: "HDMI 1")])
+    try await driver.selectInput(try #require(inputs.first))
+    #expect(await transport.requests.last?.url.path == "/launch/tvinput.hdmi1")
+}
+
+@Test func rokuCatalogListsLaunchableAppsWithoutInputs() async throws {
+    let xml = #"<apps><app id="12" type="appl">Netflix</app><app id="tvinput.hdmi1" type="tvin">HDMI 1</app></apps>"#
+    let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(),
+                                HTTPResponse(status: 200, body: Data(xml.utf8))])
+    let driver = RokuECPDriver(http: transport)
+    let tv = try await driver.probe(endpoint)
+    try await driver.connect(tv, .none)
+    #expect(try await driver.apps() == [TVApp(id: AppID(rawValue: "12"), name: "Netflix")])
 }
 
 @Test func rokuDoesNotSendACommandToAReplacementAtTheSavedAddress() async throws {

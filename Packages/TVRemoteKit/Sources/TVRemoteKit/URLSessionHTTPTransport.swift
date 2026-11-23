@@ -6,7 +6,7 @@ import FoundationNetworking
 public final class URLSessionHTTPTransport: HTTPTransport {
     private let session: URLSession
 
-    public init(timeout: TimeInterval = 1.5) {
+    public init(timeout: TimeInterval = 5) {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = timeout
         configuration.timeoutIntervalForResource = timeout

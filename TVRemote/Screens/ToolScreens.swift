@@ -1,48 +1,69 @@
 import SwiftUI
-import TVDriverKit
+import TVRemoteKit
 
 struct KeyboardScreen: View {
-    @Environment(ConnectionManager.self) private var connection
-    @SceneStorage("keyboardDraft") private var savedQuery = ""
+    @Environment(RemoteViewModel.self) private var connection
     @Environment(\.isDesignPreview) private var isDesignPreview
     @State private var previewQuery = ""
     @FocusState private var focused: Bool
     @State private var sending = false
     var sentPreview = false
 
-    private var query: Binding<String> { isDesignPreview ? $previewQuery : $savedQuery }
+    private var query: Binding<String> {
+        isDesignPreview ? $previewQuery : Binding { connection.keyboardDraft } set: { connection.keyboardDraft = $0 }
+    }
+    private var isSearch: Bool { isDesignPreview || connection.supportsSearch }
+    private var isTyping: Bool { connection.supportsTyping }
+    private var canSend: Bool { connection.canControl && (isTyping || isSearch) }
+    private var sendLabel: String { isTyping ? "Send text" : "Send search" }
 
     var body: some View {
         ScreenBody {
-            ScreenHeading("", sentPreview || connection.feedback == "Search sent to TV" ? "Search sent" : "Keyboard",
+            ScreenHeading("", sentTitle,
                           connection.currentDevice?.name ?? "No TV selected")
             Panel {
-                Text("Search on your TV").font(.headline)
-                Text("This driver supports search, not typing into arbitrary TV fields or passwords.")
+                Text(isSearch ? "Search on your TV" : isTyping ? "Type on your TV" : "Keyboard unavailable").font(.headline)
+                Text(keyboardDetail)
                     .font(.subheadline).foregroundStyle(RemoteTheme.muted)
-                TextField("Type a search", text: query, axis: .vertical)
+                TextField(isTyping ? "Type text" : "Type a search", text: query, axis: .vertical)
                     .lineLimit(3...6).textInputAutocapitalization(.sentences)
                     .padding(16).background(RemoteTheme.canvas, in: RoundedRectangle(cornerRadius: 16))
-                    .submitLabel(.search).focused($focused).disabled(!connection.canControl || sending)
+                    .submitLabel(isTyping ? .send : .search).focused($focused).disabled(!canSend || sending)
                     .onSubmit(send).accessibilityIdentifier("searchDraft")
             }
-            Button(sending ? "Sending…" : "Send search", systemImage: "arrow.up.right", action: send)
+            Button(sending ? "Sending…" : sendLabel, systemImage: "arrow.up.right", action: send)
                 .buttonStyle(PrimaryActionStyle())
-                .disabled(!connection.canControl || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSend || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Clear draft") { query.wrappedValue = ""; connection.clearMessages() }
                 .buttonStyle(SecondaryActionStyle()).disabled(sending || query.wrappedValue.isEmpty)
             ConnectionMessage()
-            SupportingCopy(title: "Only when you send", detail: "Your draft stays on this iPhone until you tap Send search. A sent search is not proof of a visible change on the TV.")
+            SupportingCopy(title: "Only when you send", detail: "Your draft stays on this iPhone until you send it. Sending does not confirm a visible change on the TV.")
         }
         .modifier(CloseTool())
     }
 
+    private var sentTitle: String {
+        if sentPreview || connection.feedback == "Search sent to TV" { return "Search sent" }
+        if connection.feedback == "Text sent to TV" { return "Text sent" }
+        return "Keyboard"
+    }
+
+    private var keyboardDetail: String {
+        if isSearch { return "This connection supports search, not typing into arbitrary TV fields or passwords." }
+        if isTyping { return "Open a supported text field on your TV first. This does not start a TV search." }
+        return "This connection does not support search or text entry. Use your TV’s keyboard instead."
+    }
+
     private func send() {
-        guard !sending else { return }
+        guard canSend, !sending else { return }
         focused = false
         sending = true
         let text = query.wrappedValue
-        Task { await connection.search(text); sending = false }
+        Task {
+            if isTyping { await connection.typeOnTV(text) }
+            else { await connection.search(text) }
+            sending = false
+        }
     }
 }
 
@@ -56,18 +77,46 @@ struct RemoteAppItem: Identifiable {
         Self(id: "prime-video", name: "Prime Video", monogram: "P"),
         Self(id: "disney-plus", name: "Disney+", monogram: "D")
     ]
+    static let googleLinks = [
+        Self(id: "https://www.youtube.com/tv", name: "YouTube", monogram: "▶"),
+        Self(id: "https://www.netflix.com", name: "Netflix", monogram: "N")
+    ]
 }
 
 struct AppsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @AppStorage("favoriteTVApps") private var favorites = ""
+    @AppStorage("favoriteTVAppsByDevice") private var savedFavorites = Data()
     @State private var query = ""
+    @State private var loaded: [TVDevice.ID: [RemoteAppItem]] = [:]
+    @State private var failed: TVDevice.ID?
     var forceUnavailable = false
     let setup: () -> Void
 
-    private var catalog: [RemoteAppItem] { connection.isDemo && !forceUnavailable ? RemoteAppItem.demo : [] }
+    private var catalog: [RemoteAppItem] {
+        guard !forceUnavailable else { return [] }
+        if connection.isDemo { return RemoteAppItem.demo }
+        if connection.supportsAppLinks { return RemoteAppItem.googleLinks }
+        return connection.currentDevice.flatMap { loaded[$0.id] } ?? []
+    }
+
+    private var favoriteOrder: Binding<String> {
+        guard !connection.isDemo, let id = connection.currentDevice?.id else { return $favorites }
+        return Binding {
+            decodeFavorites()[id] ?? ""
+        } set: { value in
+            var orders = decodeFavorites()
+            orders[id] = value
+            if let data = try? JSONEncoder().encode(orders) { savedFavorites = data }
+        }
+    }
+
+    private func decodeFavorites() -> [String: String] {
+        (try? JSONDecoder().decode([String: String].self, from: savedFavorites)) ?? [:]
+    }
+
     private var pinned: [RemoteAppItem] {
-        favorites.split(separator: ",").compactMap { id in catalog.first { $0.id == id } }
+        favoriteOrder.wrappedValue.split(separator: ",").compactMap { id in catalog.first { $0.id == id } }
     }
     private var matches: [RemoteAppItem] {
         catalog.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
@@ -78,11 +127,15 @@ struct AppsScreen: View {
             ScreenHeading("", "Apps & favorites", connection.currentDevice.map { "Launch on \($0.name)." } ?? "Choose a TV to launch apps.")
             if catalog.isEmpty {
                 HeroCard(icon: "square.grid.2x2", title: "Apps unavailable",
-                         detail: "This connection doesn’t supply an installed-app list. Use Home to browse apps on your TV.")
+                         detail: unavailableDetail)
                 Button("Open TV Home") { Task { await connection.send(.home) } }
                     .buttonStyle(PrimaryActionStyle()).disabled(!connection.canControl)
             } else {
-                SupportingCopy(title: "Demo catalog", detail: "Sample apps for simulated TVs, not an installed-app list from a real TV.")
+                if connection.isDemo {
+                    SupportingCopy(title: "Demo catalog", detail: "Sample apps for simulated TVs, not an installed-app list from a real TV.")
+                } else if connection.supportsAppLinks {
+                    SupportingCopy(title: "App shortcuts", detail: "Google TV does not share its installed apps. These links open on the TV when supported.")
+                }
                 TextField("Search apps", text: $query)
                     .padding(16).background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
                     .autocorrectionDisabled()
@@ -111,7 +164,7 @@ struct AppsScreen: View {
                 HStack {
                     Text("All apps").font(.title3.weight(.semibold))
                     Spacer()
-                    NavigationLink("Edit favorites") { FavoritesScreen(favorites: $favorites, catalog: catalog) }
+                    NavigationLink("Edit favorites") { FavoritesScreen(favorites: favoriteOrder, catalog: catalog) }
                         .frame(minHeight: 44)
                 }
                 if matches.isEmpty { Text("No apps match your search.").foregroundStyle(RemoteTheme.muted) }
@@ -130,6 +183,28 @@ struct AppsScreen: View {
             }
             ConnectionMessage()
         }
+        .task(id: connection.canControl ? connection.currentDevice?.id : nil) {
+            guard !forceUnavailable, connection.canControl, connection.supportsAppList,
+                  let id = connection.currentDevice?.id else { return }
+            do {
+                let apps = try await connection.loadApps()
+                try Task.checkCancellation()
+                loaded[id] = apps.map { RemoteAppItem(id: $0.id.rawValue, name: $0.name, monogram: String($0.name.prefix(1))) }
+                failed = nil
+            } catch is CancellationError {} catch {
+                guard !Task.isCancelled else { return }
+                failed = id
+            }
+        }
+    }
+
+    private var unavailableDetail: String {
+        if !forceUnavailable, connection.supportsAppList, let id = connection.currentDevice?.id {
+            if failed == id { return "Could not read the installed apps from this TV. Use Home to browse apps on your TV." }
+            if loaded[id]?.isEmpty == true { return "This TV did not list any apps." }
+            if connection.canControl { return "Looking up installed apps…" }
+        }
+        return "This connection doesn’t supply an installed-app list. Use Home to browse apps on your TV."
     }
 }
 
@@ -180,7 +255,7 @@ struct FavoritesScreen: View {
 }
 
 struct PointerSurface: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
 
     var body: some View {
         VStack(spacing: 12) {
@@ -274,9 +349,46 @@ struct VoiceScreen: View {
 }
 
 struct InputsScreen: View {
+    @Environment(RemoteViewModel.self) private var connection
+    @State private var inputs: [TVInput]?
+    @State private var failure: String?
+
     var body: some View {
-        UnavailableScreen(title: "Inputs", icon: "rectangle.on.rectangle",
-                          reason: "This driver does not supply inputs or an input-menu command. Use your TV’s physical remote to change inputs.")
+        if connection.supportsInputMenu || connection.supportsInputSelection {
+            ScreenBody {
+                ScreenHeading("", "Inputs", connection.currentDevice?.name ?? "No TV selected")
+                if connection.supportsInputMenu {
+                    Button("Open TV input menu") { Task { await connection.openTVInputMenu() } }
+                        .buttonStyle(PrimaryActionStyle()).disabled(!connection.canControl)
+                } else if let inputs, !inputs.isEmpty {
+                    ForEach(inputs) { input in
+                        Panel {
+                            Button {
+                                Task { await connection.selectInput(input) }
+                            } label: {
+                                DetailRow(icon: "rectangle.on.rectangle", title: input.name,
+                                          detail: "Switch input", trailing: "chevron.right")
+                            }.buttonStyle(.plain).disabled(!connection.canControl)
+                        }
+                    }
+                } else {
+                    HeroCard(icon: "rectangle.on.rectangle", title: "Inputs",
+                             detail: failure ?? (inputs == nil ? "Looking up inputs…" : "The TV did not list any inputs."))
+                }
+                ConnectionMessage()
+            }
+            .modifier(TaskSurface())
+            .task(id: connection.canControl) {
+                guard connection.canControl, connection.supportsInputSelection else { return }
+                do { inputs = try await connection.loadInputs(); failure = nil }
+                catch is CancellationError {}
+                catch TVError.notSupported { failure = "This TV did not provide an input list." }
+                catch { failure = "Could not read inputs from the TV." }
+            }
+        } else {
+            UnavailableScreen(title: "Inputs", icon: "rectangle.on.rectangle",
+                              reason: "This connection does not offer input controls. Use your TV’s physical remote to change inputs.")
+        }
     }
 }
 

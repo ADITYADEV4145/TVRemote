@@ -1,8 +1,7 @@
 import SwiftUI
-import TVDriverKit
 
 struct RemoteScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("largeControls") private var largeControls = false
     @AppStorage("hapticsEnabled") private var haptics = true
@@ -86,6 +85,7 @@ struct RemoteScreen: View {
             HStack {
                 Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
                     .foregroundStyle(RemoteTheme.muted)
+                    .accessibilityHint(connection.canPower && !connection.canControl ? "Power can try to wake this TV." : "")
                 if connection.isDemo {
                     Text("DEMO").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 3)
@@ -93,11 +93,14 @@ struct RemoteScreen: View {
                 }
                 Spacer()
                 if [.recovering, .degraded, .needsRepair, .asleep].contains(connection.state) {
-                    NavigationLink("Fix connection") { DiagnosticsScreen() }
+                    NavigationLink("Fix connection", value: RootScreen.RemoteDestination.diagnostics)
                         .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                 }
             }
             .font(.subheadline)
+            if let reason = connection.powerUnavailableReason {
+                Text(reason).font(.footnote).foregroundStyle(RemoteTheme.muted)
+            }
         }
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)
@@ -124,7 +127,7 @@ struct RemoteScreen: View {
                 .labelStyle(.iconOnly).buttonStyle(ControlKeyStyle(clear: true))
         }
         .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-        .disabled(!connection.canControl)
+        .disabled(up == .channelUp ? !connection.canChangeChannel : !connection.canControl)
     }
 
     private func press(_ key: RemoteKey) {

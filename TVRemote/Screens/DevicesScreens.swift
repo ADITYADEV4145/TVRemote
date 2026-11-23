@@ -1,19 +1,24 @@
 import SwiftUI
-import TVDriverKit
 
 enum SetupPage: String {
     case welcome, network, discovery, code, approval, retry, ready, manual, denied, empty
 }
 
 struct SetupScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
+    @Environment(\.dismiss) private var dismiss
     @State private var page: SetupPage
     @State private var address = ""
     @State private var code = ""
+    @State private var movedDeviceID: String?
+    private let initiallyStarted: Bool
     let connected: () -> Void
 
-    init(initiallyStarted: Bool = false, initialPage: SetupPage? = nil, connected: @escaping () -> Void) {
+    init(initiallyStarted: Bool = false, initialPage: SetupPage? = nil, movedDeviceID: String? = nil,
+         connected: @escaping () -> Void) {
         _page = State(initialValue: initialPage ?? (initiallyStarted ? .discovery : .welcome))
+        self.initiallyStarted = initiallyStarted
+        _movedDeviceID = State(initialValue: movedDeviceID)
         self.connected = connected
     }
 
@@ -52,20 +57,28 @@ struct SetupScreen: View {
                 Button("Open remote", action: connected).buttonStyle(PrimaryActionStyle())
                 SupportingCopy(title: "No payment needed", detail: "Power, supported navigation, volume and recovery stay free.")
             default:
-                SetupStatusContent(page: page, retry: { page = .discovery }, manual: { page = .manual })
+                SetupStatusContent(page: page, retry: {
+                    if page == .approval { connection.retryTVApproval() }
+                    else { connection.cancelPairing(); page = .discovery }
+                },
+                                   chooseAnother: chooseAnotherTV,
+                                   manual: { page = .manual },
+                                   retryDisabled: page == .approval && connection.awaitingTVApproval)
             }
             if connection.isConnecting { ProgressView("Connecting to TV") }
-            ConnectionMessage()
+            if page != .approval || !connection.awaitingTVApproval { ConnectionMessage() }
         }
         .modifier(CloseTool())
         .toolbar {
-            if page != .welcome {
+            if page != .welcome && movedDeviceID == nil {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Back", systemImage: "chevron.left") {
                         connection.cancelPairing()
                         switch page {
                         case .network: page = .welcome
-                        case .discovery: page = .network
+                        case .discovery:
+                            if initiallyStarted { dismiss() }
+                            else { page = .network }
                         default: page = .discovery
                         }
                     }
@@ -75,11 +88,19 @@ struct SetupScreen: View {
             }
         }
         .task(id: page) { if page == .discovery { await connection.discover() } }
-        .onChange(of: connection.pairingDevice) {
-            if connection.pairingDevice != nil { page = .code }
+        .onChange(of: connection.pairingPrompt) {
+            if let prompt = connection.pairingPrompt { page = prompt == .approval ? .approval : .code }
         }
+        .onChange(of: connection.pairingCompletion) { page = .ready }
         .interactiveDismissDisabled(connection.isConnecting)
         .onDisappear { connection.cancelPairing() }
+    }
+
+    private func chooseAnotherTV() {
+        connection.cancelPairing()
+        movedDeviceID = nil
+        code = ""
+        page = .discovery
     }
 
     private var discovery: some View {
@@ -127,16 +148,15 @@ struct SetupScreen: View {
             }
             .buttonStyle(PrimaryActionStyle())
             .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || connection.isConnecting)
-            Button("Choose another TV") {
-                connection.cancelPairing(); code = ""; page = .discovery
-            }
+            Button("Choose another TV", action: chooseAnotherTV)
             .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
         }
     }
 
     private var manual: some View {
         Group {
-            ScreenHeading("", "Add by IP address", "When your TV doesn’t appear automatically.")
+            ScreenHeading("", movedDeviceID == nil ? "Add by IP address" : "Update TV address",
+                          movedDeviceID == nil ? "When your TV doesn’t appear automatically." : "Enter the new address for your saved TV.")
             Text("TV address").font(.subheadline).foregroundStyle(RemoteTheme.muted)
             TextField("192.168.1.42", text: $address)
                 .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -145,10 +165,12 @@ struct SetupScreen: View {
                            ? "Demo addresses: 192.0.2.10 or 192.0.2.11."
                            : "Find the address in your TV’s network settings. An address is not a substitute for pairing.")
             Button("Find TV") {
-                Task { if await connection.find(address: address) { page = .ready } }
+                Task { if await connection.find(address: address, matching: movedDeviceID) { page = .ready } }
             }
             .buttonStyle(PrimaryActionStyle()).disabled(address.isEmpty || connection.isConnecting)
-            Button("Back to nearby TVs") { page = .discovery }.buttonStyle(SecondaryActionStyle())
+            if movedDeviceID == nil {
+                Button("Back to nearby TVs") { page = .discovery }.buttonStyle(SecondaryActionStyle())
+            }
         }
     }
 }
@@ -156,7 +178,9 @@ struct SetupScreen: View {
 struct SetupStatusContent: View {
     let page: SetupPage
     var retry: () -> Void = {}
+    var chooseAnother: () -> Void = {}
     var manual: () -> Void = {}
+    var retryDisabled = false
 
     var body: some View {
         Group {
@@ -169,9 +193,10 @@ struct SetupStatusContent: View {
                 }.buttonStyle(PrimaryActionStyle())
             } else {
                 Button(page == .approval ? "Try again" : "Search again", action: retry).buttonStyle(PrimaryActionStyle())
+                    .disabled(retryDisabled)
             }
             Button(page == .empty ? "Enter IP address" : "Choose another TV",
-                   action: page == .empty ? manual : retry).buttonStyle(SecondaryActionStyle())
+                   action: page == .empty ? manual : chooseAnother).buttonStyle(SecondaryActionStyle())
         }
     }
 
@@ -199,7 +224,7 @@ struct SetupStatusContent: View {
 }
 
 struct DevicesScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     let add: () -> Void
     let connected: () -> Void
 
@@ -225,28 +250,37 @@ struct DevicesScreen: View {
                 }
             }
             if connection.pairingDevice != nil {
-                NavigationLink("Finish pairing") { SetupScreen(initialPage: .code, connected: connected) }
+                NavigationLink("Finish pairing") {
+                    SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code,
+                                connected: connected)
+                }
                     .buttonStyle(PrimaryActionStyle())
             }
             Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
             ConnectionMessage()
         }
+        .onChange(of: connection.pairingCompletion) { connected() }
     }
 }
 
 struct TVDetailScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     let device: TVDevice
+    private var savedDevice: TVDevice { connection.savedDevices.first { $0.id == device.id } ?? device }
 
     var body: some View {
         ScreenBody {
-            ScreenHeading("", device.name, device.platform)
+            ScreenHeading("", savedDevice.name, device.platform)
             Panel {
                 DetailRow(icon: "tv", title: "Connection", detail: connection.currentDevice?.id == device.id ? connection.state.rawValue : "Not selected")
                 DetailRow(icon: "network", title: "TV address", detail: device.address)
                 DetailRow(icon: "hand.point.up.left", title: "Touchpad", detail: device.supportsPointer ? "Available with this driver" : "Not supported")
             }
             NavigationLink("Connection details") { ConnectionDetailsScreen(device: device) }.buttonStyle(SecondaryActionStyle())
+            if !connection.isDemo {
+                NavigationLink("Rename TV") { RenameTVScreen(device: savedDevice) }
+                    .buttonStyle(SecondaryActionStyle())
+            }
             NavigationLink("Forget this TV") { ForgetTVScreen(device: device) }.buttonStyle(SecondaryActionStyle(destructive: true))
             SupportingCopy(title: "On this phone only", detail: "Forgetting removes this app’s pairing. It does not change TV apps or settings.")
         }
@@ -254,8 +288,35 @@ struct TVDetailScreen: View {
     }
 }
 
+private struct RenameTVScreen: View {
+    @Environment(RemoteViewModel.self) private var connection
+    @Environment(\.dismiss) private var dismiss
+    let device: TVDevice
+    @State private var name: String
+
+    init(device: TVDevice) {
+        self.device = device
+        _name = State(initialValue: device.name)
+    }
+
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Rename TV", "This name is only used on this iPhone.")
+            TextField("TV name", text: $name).padding(16)
+                .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+            Button("Save name") {
+                connection.rename(device, to: name)
+                dismiss()
+            }
+            .buttonStyle(PrimaryActionStyle())
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+        .modifier(TaskSurface())
+    }
+}
+
 struct ForgetTVScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @Environment(\.dismiss) private var dismiss
     @State private var forgotten = false
     let device: TVDevice

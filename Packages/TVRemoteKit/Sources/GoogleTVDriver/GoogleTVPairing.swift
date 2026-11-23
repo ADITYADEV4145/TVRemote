@@ -51,6 +51,7 @@ enum GoogleTVPairing {
         guard response.number(1) == 2, let status = response.number(2) else { throw TVError.invalidResponse }
         switch status {
         case 200: break
+        case 400 where field == 11: throw TVError.pairingDeclined
         case 402: throw TVError.credentialRejected
         case 401: throw TVError.notSupported
         default: throw TVError.invalidResponse
