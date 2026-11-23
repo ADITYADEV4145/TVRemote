@@ -279,8 +279,8 @@ async def run(duration, interval, output, chaos_every=5):
         "by_tv": {probe.name: metrics([row for row in rows if row["tv"] == probe.name], seconds, [probe])
                   for probe in probes},
     }
-    output.with_suffix(".json").write_text(json.dumps({**report, "samples": rows}, indent=2) + "\n")
-    with output.with_suffix(".csv").open("w", newline="") as handle:
+    output.with_name(output.name + ".json").write_text(json.dumps({**report, "samples": rows}, indent=2) + "\n")
+    with output.with_name(output.name + ".csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)

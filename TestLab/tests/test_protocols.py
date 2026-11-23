@@ -417,7 +417,7 @@ async def test_google_revoke_during_delayed_pairing_secret(lab, tmp_path, monkey
 
 
 async def test_short_soak(tmp_path):
-    result = await run(3, .15, tmp_path / "report", chaos_every=1)
+    result = await run(3, .15, tmp_path / "report.test", chaos_every=1)
     summary = result["summary"]
     assert summary["samples"] >= 24
     assert summary["failures"] == 0
@@ -425,5 +425,6 @@ async def test_short_soak(tmp_path):
     assert summary["latency_p95_ms"] is not None
     assert summary["slo"]["command_p95_under_250ms"]
     assert summary["slo"]["crash_free_sessions_at_least_99_5_percent"] is None
-    assert (tmp_path / "report.csv").read_text().startswith("round,elapsed_s,tv,")
-    assert (tmp_path / "report.json").is_file()
+    assert (tmp_path / "report.test.csv").read_text().startswith("round,elapsed_s,tv,")
+    assert (tmp_path / "report.test.json").is_file()
+    assert not (tmp_path / "report.json").exists()
