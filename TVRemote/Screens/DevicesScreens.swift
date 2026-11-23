@@ -59,8 +59,9 @@ struct SetupScreen: View {
             default:
                 SetupStatusContent(page: page, retry: {
                     if page == .approval { connection.retryTVApproval() }
-                    else { connection.cancelPairing(); page = .discovery }
+                    else { chooseAnotherTV() }
                 },
+                                   chooseAnother: chooseAnotherTV,
                                    manual: { page = .manual },
                                    retryDisabled: page == .approval && connection.awaitingTVApproval)
             }
@@ -93,6 +94,11 @@ struct SetupScreen: View {
         .onChange(of: connection.pairingCompletion) { page = .ready }
         .interactiveDismissDisabled(connection.isConnecting)
         .onDisappear { connection.cancelPairing() }
+    }
+
+    private func chooseAnotherTV() {
+        connection.cancelPairing()
+        page = .discovery
     }
 
     private var discovery: some View {
@@ -172,6 +178,7 @@ struct SetupScreen: View {
 struct SetupStatusContent: View {
     let page: SetupPage
     var retry: () -> Void = {}
+    var chooseAnother: () -> Void = {}
     var manual: () -> Void = {}
     var retryDisabled = false
 
@@ -189,7 +196,7 @@ struct SetupStatusContent: View {
                     .disabled(retryDisabled)
             }
             Button(page == .empty ? "Enter IP address" : "Choose another TV",
-                   action: page == .empty ? manual : retry).buttonStyle(SecondaryActionStyle())
+                   action: page == .empty ? manual : chooseAnother).buttonStyle(SecondaryActionStyle())
         }
     }
 

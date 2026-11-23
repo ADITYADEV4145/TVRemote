@@ -62,6 +62,15 @@ final class SimulatedTVTests: XCTestCase {
             XCTAssertFalse(app.staticTexts["Add by IP address"].exists)
             XCTAssertTrue(retry.isEnabled)
             XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
+            if brand == "lg" {
+                try await chaos("approval", for: brand, allow: false)
+                app.buttons["Choose another TV"].tap()
+                XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
+                XCTAssertFalse(app.staticTexts["The TV declined the pairing request."].exists)
+                enterAddress(port, in: app)
+                XCTAssertTrue(app.staticTexts["The TV declined the pairing request."].waitForExistence(timeout: 8))
+                try await chaos("approval", for: brand, allow: true)
+            }
             retry.tap()
             assertApprovalPending(in: app, retry: retry)
             capture("\(brand)-approval")
