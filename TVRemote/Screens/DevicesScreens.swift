@@ -108,12 +108,15 @@ struct SetupScreen: View {
 struct DevicesScreen: View {
     @Environment(ConnectionManager.self) private var connection
     @State private var code = ""
+    @State private var forgetCandidate: TVDevice?
+    @State private var confirmForget = false
     let add: () -> Void
     let connected: () -> Void
 
     var body: some View {
-        ScreenBody {
+        List {
             ScreenHeading("TV REMOTE  /  02", "My TVs", "Switch rooms without relearning your remote.")
+                .deviceListRow()
             if let pairingDevice = connection.pairingDevice {
                 Panel {
                     DetailRow(icon: "number.square", title: "Pair with \(pairingDevice.name)",
@@ -133,35 +136,90 @@ struct DevicesScreen: View {
                     }
                     .frame(minHeight: RemoteTheme.target)
                 }
+                .deviceListRow()
             }
-            Panel {
-                if connection.savedDevices.isEmpty {
+            if connection.savedDevices.isEmpty {
+                Panel {
                     DetailRow(icon: "tv", title: "No TVs paired yet", detail: "Add a TV to get started.")
                 }
-                ForEach(connection.savedDevices) { device in
-                    Button {
-                        Task {
-                            let didConnect: Bool
-                            if connection.currentDevice?.id == device.id {
-                                didConnect = connection.canControl ? true : await connection.reconnect()
-                            } else {
-                                didConnect = await connection.select(device)
-                            }
-                            if didConnect { connected() }
-                        }
-                    } label: {
-                        DetailRow(icon: "tv", title: device.name,
-                                  detail: connection.currentDevice?.id == device.id
-                                  ? "\(device.platform) · \(connection.state.rawValue)" : device.platform,
-                                  trailing: connection.currentDevice?.id == device.id ? "checkmark.circle.fill" : "chevron.right")
+                .deviceListRow()
+            }
+            ForEach(connection.savedDevices) { device in
+                savedTV(device)
+                    .deviceListRow()
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        forgetButton(for: device)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(connection.isConnecting)
-                }
             }
             Button("Add a TV", systemImage: "plus") { add() }
                 .buttonStyle(PrimaryActionStyle())
-            ConnectionMessage()
+                .deviceListRow()
+            if connection.error != nil || connection.feedback != nil {
+                ConnectionMessage()
+                    .deviceListRow()
+            }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(RemoteTheme.canvas.ignoresSafeArea())
+        .foregroundStyle(RemoteTheme.ink)
+        .confirmationDialog("Forget this TV?", isPresented: $confirmForget, presenting: forgetCandidate) { device in
+            Button("Forget \(device.name)", role: .destructive) {
+                Task { await connection.forget(device) }
+            }
+        } message: { device in
+            Text("You’ll need to pair \(device.name) again before using it.")
+        }
+    }
+
+    private func savedTV(_ device: TVDevice) -> some View {
+        let isCurrent = connection.currentDevice?.id == device.id
+        return Panel {
+            HStack(spacing: 8) {
+                Button {
+                    Task {
+                        let didConnect: Bool
+                        if isCurrent {
+                            didConnect = connection.canControl ? true : await connection.reconnect()
+                        } else {
+                            didConnect = await connection.select(device)
+                        }
+                        if didConnect { connected() }
+                    }
+                } label: {
+                    DetailRow(icon: "tv", title: device.name,
+                              detail: isCurrent ? "\(device.platform) · \(connection.state.rawValue)" : device.platform,
+                              trailing: isCurrent ? "checkmark.circle.fill" : nil)
+                }
+                .buttonStyle(.plain)
+                .contextMenu { forgetButton(for: device) }
+
+                Menu {
+                    forgetButton(for: device)
+                } label: {
+                    Label("Options for \(device.name)", systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                        .frame(width: RemoteTheme.target, height: RemoteTheme.target)
+                        .contentShape(Rectangle())
+                }
+            }
+        }
+        .disabled(connection.isConnecting)
+    }
+
+    private func forgetButton(for device: TVDevice) -> some View {
+        Button("Forget", systemImage: "trash", role: .destructive) {
+            forgetCandidate = device
+            confirmForget = true
+        }
+        .disabled(connection.isConnecting)
+    }
+}
+
+private extension View {
+    func deviceListRow() -> some View {
+        listRowInsets(EdgeInsets(top: 8, leading: RemoteTheme.gutter, bottom: 8, trailing: RemoteTheme.gutter))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
     }
 }

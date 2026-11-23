@@ -94,6 +94,32 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(driver.commands, [.key(.power), .wake(device.id)])
     }
 
+    func testForgettingTheActiveTVDisconnectsAndRequiresPairingAgain() async {
+        let driver = MockTVDriver()
+        let connection = ConnectionManager(driver: driver)
+        let bedroom = MockTVDriver.devices[1]
+
+        _ = await connection.select(bedroom)
+        _ = await connection.submit(code: MockTVDriver.demoCode)
+        await waitForState(.ready, on: connection)
+        await connection.forget(bedroom)
+
+        XCTAssertNil(connection.currentDevice)
+        XCTAssertTrue(connection.savedDevices.isEmpty)
+        XCTAssertEqual(connection.state, .idle)
+        do {
+            try await driver.send(.home)
+            XCTFail("The driver must disconnect when its active TV is forgotten.")
+        } catch MockTVDriver.Failure.notConnected {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        let didConnect = await connection.select(bedroom)
+        XCTAssertFalse(didConnect)
+        XCTAssertEqual(connection.pairingDevice, bedroom)
+    }
+
     private func waitForState(_ state: ConnectionState, on connection: ConnectionManager) async {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while connection.state != state && ContinuousClock.now < deadline {

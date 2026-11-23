@@ -71,3 +71,7 @@ public protocol ManualAddressDriver {
 public protocol PointerDriver {
     func movePointer(x: Double, y: Double) async throws
 }
+
+public protocol DisconnectingTVDriver {
+    func disconnect() async
+}

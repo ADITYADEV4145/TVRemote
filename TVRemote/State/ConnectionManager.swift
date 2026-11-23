@@ -96,6 +96,24 @@ final class ConnectionManager {
         return await select(devices.first(where: { $0.id == device.id }) ?? device)
     }
 
+    func forget(_ device: TVDevice) async {
+        guard !isConnecting else { return }
+        credentials.removeValue(forKey: device.id)
+        savedDevices.removeAll { $0.id == device.id }
+        if pairingDevice?.id == device.id { pairingDevice = nil }
+        guard currentDevice?.id == device.id else { return }
+
+        isConnecting = true
+        currentDevice = nil
+        state = .idle
+        feedback = nil
+        error = nil
+        if let disconnectingDriver = driver as? any DisconnectingTVDriver {
+            await disconnectingDriver.disconnect()
+        }
+        isConnecting = false
+    }
+
     func send(_ key: RemoteKey) async {
         if key == .power, state == .asleep, !isConnecting, let device = currentDevice {
             await perform("Waking \(device.name)") { try await driver.wake(device) }

@@ -1,7 +1,7 @@
 import Foundation
 import TVDriverKit
 
-final class MockTVDriver: TVDriver, PairingCodeDriver, ManualAddressDriver, PointerDriver {
+final class MockTVDriver: TVDriver, PairingCodeDriver, ManualAddressDriver, PointerDriver, DisconnectingTVDriver {
     enum Command: Equatable {
         case key(RemoteKey)
         case app(AppID)
@@ -65,6 +65,13 @@ final class MockTVDriver: TVDriver, PairingCodeDriver, ManualAddressDriver, Poin
         lock.withLock {
             connectedDevice = tv
             updates.yield(.ready)
+        }
+    }
+
+    func disconnect() async {
+        lock.withLock {
+            connectedDevice = nil
+            updates.yield(.idle)
         }
     }
 
