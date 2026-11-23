@@ -21,14 +21,7 @@ struct RemoteScreen: View {
     var body: some View {
         ScreenBody(spacing: 8) {
             header
-            HStack(alignment: .top) {
-                utility("Power", "power") { press(.power) }.disabled(!connection.canPower)
-                Spacer()
-                utility("Input", "rectangle.on.rectangle") { open(.inputs) }
-                Spacer()
-                utility("Keyboard", "keyboard") { open(.keyboard) }
-            }
-            .padding(.horizontal, large ? 0 : 24)
+            utilityControls
             modePicker
             if touchpad && connection.supportsPointer {
                 PointerSurface()
@@ -36,18 +29,26 @@ struct RemoteScreen: View {
                 DirectionDisc(large: large, enabled: connection.canControl, press: press)
                     .frame(maxWidth: .infinity)
             }
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 16) { navigationKeys }
-                VStack(spacing: 12) { navigationKeys }
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) {
-                    rocker("Volume", up: .volumeUp, down: .volumeDown)
-                    rocker("Channel", up: .channelUp, down: .channelDown)
-                }
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) { navigationKeys }
                 VStack(spacing: 8) {
                     rocker("Volume", up: .volumeUp, down: .volumeDown)
                     rocker("Channel", up: .channelUp, down: .channelDown)
+                }
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 16) { navigationKeys }
+                    VStack(spacing: 12) { navigationKeys }
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        rocker("Volume", up: .volumeUp, down: .volumeDown)
+                        rocker("Channel", up: .channelUp, down: .channelDown)
+                    }
+                    VStack(spacing: 8) {
+                        rocker("Volume", up: .volumeUp, down: .volumeDown)
+                        rocker("Channel", up: .channelUp, down: .channelDown)
+                    }
                 }
             }
             ConnectionMessage()
@@ -66,15 +67,18 @@ struct RemoteScreen: View {
     }
 
     private var modePicker: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 2) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 2))
+            : AnyLayout(HStackLayout(spacing: 2))
+        return VStack(spacing: 4) {
+            layout {
                 modeButton("Buttons", selected: !touchpad || !connection.supportsPointer) { touchpad = false }
                 modeButton("Touchpad", selected: touchpad && connection.supportsPointer) { touchpad = true }
                     .disabled(!connection.supportsPointer)
                     .accessibilityHint(connection.supportsPointer ? "Swipe to move the TV pointer." : "Not supported by this TV or connection. Use Buttons.")
             }
             .padding(3)
-            .background(RemoteTheme.raised, in: Capsule())
+            .background(RemoteTheme.raised, in: RoundedRectangle(cornerRadius: 24))
             .frame(maxWidth: large ? .infinity : 280)
             .frame(maxWidth: .infinity)
             if !connection.supportsPointer {
@@ -90,6 +94,8 @@ struct RemoteScreen: View {
     private func modeButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background(selected ? RemoteTheme.surface : .clear, in: Capsule())
                 .contentShape(Capsule())
@@ -102,11 +108,11 @@ struct RemoteScreen: View {
     private var navigationKeys: some View {
         Group {
             utility("Back", "arrow.uturn.backward") { press(.back) }
-            Spacer(minLength: 0)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             utility("Home", "house") { press(.home) }
-            Spacer(minLength: 0)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             utility("Play/pause", "play") { press(.playPause) }
-            Spacer(minLength: 0)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 0) }
             utility("Mute", "speaker.slash") { press(.mute) }
         }
         .disabled(!connection.canControl)
@@ -137,8 +143,25 @@ struct RemoteScreen: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var utilityControls: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top))
+        return layout {
+            utility("Power", "power") { press(.power) }.disabled(!connection.canPower)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+            utility("Input", "rectangle.on.rectangle") { open(.inputs) }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer() }
+            utility("Keyboard", "keyboard") { open(.keyboard) }
+        }
+        .padding(.horizontal, large ? 0 : 24)
+    }
+
     private func utility(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
-        VStack(spacing: 4) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(HStackLayout(spacing: 12))
+            : AnyLayout(VStackLayout(spacing: 4))
+        return layout {
             Button(title, systemImage: icon, action: action)
                 .labelStyle(.iconOnly)
                 .buttonStyle(ControlKeyStyle(size: large ? 72 : 56))

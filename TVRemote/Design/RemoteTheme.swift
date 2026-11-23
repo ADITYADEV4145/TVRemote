@@ -199,6 +199,9 @@ struct PrimaryActionStyle: ButtonStyle {
         configuration.label
             .font(.headline)
             .multilineTextAlignment(.center)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 12)
             .frame(maxWidth: .infinity, minHeight: RemoteTheme.target)
             .padding(.horizontal, 12)
             .foregroundStyle(RemoteTheme.onAccent)
