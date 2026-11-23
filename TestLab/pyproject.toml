@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tvlab"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.10,<4", "androidtvremote2>=0.3,<1", "cryptography>=44", "pyOpenSSL>=25", "zeroconf>=0.143,<1"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2"]
+
+[tool.setuptools.packages.find]
+include = ["tvlab*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
