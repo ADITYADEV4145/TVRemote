@@ -1,13 +1,33 @@
 import XCTest
 
 final class RemoteKeyTests: XCTestCase {
+    func testTabSwitchPreservesNavigationAndActiveTabReturnsToRoot() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Close"].tap()
+        for title in ["Remote", "Apps", "My TVs", "Settings"] {
+            let button = tabButton(title, in: app)
+            XCTAssertTrue(button.isHittable)
+            XCTAssertGreaterThanOrEqual(button.frame.height + 0.001, 44)
+        }
+        tabButton("Settings", in: app).tap()
+        XCTAssertTrue(tabButton("Settings", in: app).isSelected)
+        select("Appearance", in: app)
+        XCTAssertTrue(app.staticTexts["Your room. Your choice."].waitForExistence(timeout: 5))
+        tabButton("Remote", in: app).tap()
+        tabButton("Settings", in: app).tap()
+        XCTAssertTrue(app.staticTexts["Your room. Your choice."].waitForExistence(timeout: 5))
+        tabButton("Settings", in: app).tap()
+        XCTAssertTrue(app.staticTexts["Make yourself at home."].waitForExistence(timeout: 5))
+    }
+
     func testPrimaryActionsClearTheTabBar() {
         continueAfterFailure = false
         let app = launchSetup()
         app.buttons["Close"].tap()
         assertAboveTabBar(app.buttons["Talk to your TV"], in: app)
         assertAboveTabBar(app.buttons["Find a TV"], in: app)
-        tabBar(in: app).buttons["My TVs"].tap()
+        tabButton("My TVs", in: app).tap()
         assertAboveTabBar(app.buttons["Add a TV"], in: app)
     }
 
@@ -68,6 +88,18 @@ final class RemoteKeyTests: XCTestCase {
         return floating.exists ? floating : app.tabBars.firstMatch
     }
 
+    private func tabButton(_ title: String, in app: XCUIApplication) -> XCUIElement {
+        let identifiers = ["Remote": "tab.remote", "Apps": "tab.apps",
+                           "My TVs": "tab.devices", "Settings": "tab.settings"]
+        if let identifier = identifiers[title] {
+            // Tab traits expose nested legacy label matches on iOS 26.
+            // Select the outer control by its stable identifier, not its label.
+            let floating = app.buttons[identifier].firstMatch
+            if floating.exists { return floating }
+        }
+        return app.tabBars.buttons[title]
+    }
+
     func testDiscoveryBackReturnsToNetworkThenWelcome() {
         continueAfterFailure = false
         let app = launchSetup()
@@ -105,7 +137,7 @@ final class RemoteKeyTests: XCTestCase {
         app.buttons["Find TVs"].tap()
         select("Living Room", in: app)
         app.buttons["Open remote"].tap()
-        tabBar(in: app).buttons["My TVs"].tap()
+        tabButton("My TVs", in: app).tap()
         app.buttons["Add a TV"].tap()
         XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Find my TV"].exists)

@@ -7,6 +7,9 @@ struct RootScreen: View {
     @State private var tab = Tab.remote
     @State private var sheet: Tool?
     @State private var remotePath: [RemoteDestination] = []
+    @State private var appsPath: [AppsScreen.Destination] = []
+    @State private var devicesStackID = UUID()
+    @State private var settingsStackID = UUID()
     var showWelcome = true
     var remoteTouchpad = false
     var forceLarge = false
@@ -18,7 +21,7 @@ struct RootScreen: View {
         self.forceLarge = forceLarge
     }
 
-    enum Tab: CaseIterable {
+    enum Tab: String, CaseIterable {
         case remote, apps, devices, settings
 
         var title: String {
@@ -47,37 +50,39 @@ struct RootScreen: View {
 
     var body: some View {
         VStack(spacing: 0) {
-        TabView(selection: $tab) {
-            NavigationStack(path: $remotePath) {
-                RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 }).toolbar(.hidden, for: .navigationBar)
-                    .navigationDestination(for: RemoteDestination.self) { _ in
-                        DiagnosticsScreen(openRemote: returnToRemote)
-                    }
-            }
-            .toolbar(nativeTabBarVisibility, for: .tabBar)
-            .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
+            TabView(selection: $tab) {
+                NavigationStack(path: $remotePath) {
+                    RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 }).toolbar(.hidden, for: .navigationBar)
+                        .navigationDestination(for: RemoteDestination.self) { _ in
+                            DiagnosticsScreen(openRemote: returnToRemote)
+                        }
+                }
+                .toolbar(nativeTabBarVisibility, for: .tabBar)
+                .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
 
-            NavigationStack {
-                AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
-            }
-            .toolbar(nativeTabBarVisibility, for: .tabBar)
-            .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
+                NavigationStack(path: $appsPath) {
+                    AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
+                }
+                .toolbar(nativeTabBarVisibility, for: .tabBar)
+                .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
 
-            NavigationStack {
-                DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
-                    .toolbar(.hidden, for: .navigationBar)
-            }
-            .toolbar(nativeTabBarVisibility, for: .tabBar)
-            .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
+                NavigationStack {
+                    DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
+                        .toolbar(.hidden, for: .navigationBar)
+                }
+                .id(devicesStackID)
+                .toolbar(nativeTabBarVisibility, for: .tabBar)
+                .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
 
-            NavigationStack {
-                SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
+                NavigationStack {
+                    SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
+                }
+                .id(settingsStackID)
+                .toolbar(nativeTabBarVisibility, for: .tabBar)
+                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
             }
-            .toolbar(nativeTabBarVisibility, for: .tabBar)
-            .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
-        }
             if #available(iOS 26, *) {
-                FloatingTabBar(selection: $tab)
+                FloatingTabBar(selection: tab, select: selectTab)
                     .frame(maxWidth: 560)
                     .padding(.horizontal, 16)
                     .padding(.top, 6)
@@ -114,6 +119,21 @@ struct RootScreen: View {
         if #available(iOS 26, *) { .hidden } else { .automatic }
     }
 
+    private func selectTab(_ selected: Tab) {
+        guard selected == tab else {
+            tab = selected
+            return
+        }
+        // Reselecting an active tab returns to its root, like the native bar.
+        // These identities change only on an explicit tap, never on appearance.
+        switch selected {
+        case .remote: remotePath.removeAll()
+        case .apps: appsPath.removeAll()
+        case .devices: devicesStackID = UUID()
+        case .settings: settingsStackID = UUID()
+        }
+    }
+
     private func returnToRemote() {
         sheet = nil
         remotePath.removeAll()
@@ -127,7 +147,8 @@ struct RootScreen: View {
 private struct FloatingTabBar: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Binding var selection: RootScreen.Tab
+    let selection: RootScreen.Tab
+    let select: (RootScreen.Tab) -> Void
 
     var body: some View {
         Group {
@@ -146,7 +167,7 @@ private struct FloatingTabBar: View {
     private var buttons: some View {
         HStack(spacing: 0) {
             ForEach(RootScreen.Tab.allCases, id: \.self) { tab in
-                Button { selection = tab } label: {
+                Button { select(tab) } label: {
                     VStack(spacing: 3) {
                         Image(systemName: tab.symbol)
                             .font(.system(size: 20, weight: .medium))
@@ -162,6 +183,7 @@ private struct FloatingTabBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.title)
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
+                .accessibilityIdentifier("tab.\(tab.rawValue)")
             }
         }
         .padding(4)
