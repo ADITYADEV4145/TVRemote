@@ -147,6 +147,9 @@ struct RemoteScreen: View {
                 }
             }
             .font(.subheadline)
+            if let reason = connection.powerUnavailableReason {
+                Text(reason).font(.footnote).foregroundStyle(RemoteTheme.muted)
+            }
         }
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)
