@@ -7,9 +7,9 @@ final class RemoteKeyTests: XCTestCase {
         app.buttons["Find my TV"].tap()
         app.buttons["Find TVs"].tap()
         XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
-        app.buttons["Back"].tap()
+        app.navigationBars.buttons["Back"].firstMatch.tap()
         XCTAssertTrue(app.buttons["Find TVs"].waitForExistence(timeout: 5))
-        app.buttons["Back"].tap()
+        app.navigationBars.buttons["Back"].firstMatch.tap()
         XCTAssertTrue(app.buttons["Find my TV"].waitForExistence(timeout: 5))
     }
 
