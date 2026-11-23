@@ -49,13 +49,13 @@ private actor SocketScript: WebSocketTransport {
 
 private actor SamsungDeviceInfo: HTTPTransport {
     private(set) var requests: [HTTPRequest] = []
-    let port: Int
+    let port: Int?
 
-    init(port: Int = 8002) { self.port = port }
+    init(port: Int? = 8002) { self.port = port }
 
     func request(_ request: HTTPRequest) throws -> HTTPResponse {
         requests.append(request)
-        guard request.url.port == port else { throw TVError.unreachable }
+        if let port, request.url.port != port { throw TVError.unreachable }
         return HTTPResponse(status: 200, body: Data("""
             {"device":{"duid":"uuid:samsung-1","name":"Living Room","wifiMac":"02:11:22:33:44:55"}}
             """.utf8))
@@ -139,6 +139,26 @@ private struct SocketDiscovery: DiscoverySource {
     await #expect(throws: TVError.credentialRejected) { try await driver.connect(tv, .token("old")) }
     #expect(await unauthorized.closed)
     #expect(await sockets.attempts.first?.url.scheme == "ws")
+}
+
+@Test func samsungReconnectUsesPlainPairedPortAfterSecureDiscovery() async throws {
+    let http = SamsungDeviceInfo(port: nil)
+    let accepted = SocketTranscript([#"{"event":"ms.channel.connect"}"#])
+    let sockets = SocketScript([.success(accepted)])
+    let discovery = SocketDiscovery(endpoint: TVEndpoint(host: "new.local", port: 8002))
+    let driver: any TVDriver = SamsungTizenDriver(http: http, sockets: sockets, discovery: discovery)
+    var devices: [TVDevice] = []
+    for await tv in driver.discover() { devices.append(tv) }
+    let tv = try #require(devices.first)
+    #expect(tv.endpoint.port == 8002)
+
+    try await driver.connect(tv, .samsungToken("paired-token", certificate: nil))
+    #expect(await http.requests.map { $0.url.port } == [8002, 8001])
+    let attempt = try #require(await sockets.attempts.first)
+    #expect(attempt.url.scheme == "ws")
+    #expect(attempt.url.host == "new.local")
+    #expect(attempt.url.port == 8001)
+    #expect(await driver.connectedDevice()?.endpoint.port == 8001)
 }
 
 @Test func lgRegistrationCommandsAndCredentialReuse() async throws {

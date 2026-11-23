@@ -62,9 +62,9 @@ public actor SamsungTizenDriver: TVDriver {
         device = nil
         updates.yield(.connecting)
         do {
-            let live = try await inspect(tv.endpoint, certificate: certificate)
+            let pairedPort: UInt16 = certificate == nil ? 8001 : 8002
+            let live = try await inspect(tv.endpoint, pairedPort: pairedPort, certificate: certificate)
             guard live.id == tv.id else { throw TVError.identityMismatch }
-            guard (live.endpoint.port == 8002) == (certificate != nil) else { throw TVError.pairingRequired }
             let socket = try await open(live, token: token, trust: certificate.map(TLSPeerTrust.pinned) ?? .system)
             do {
                 _ = try await authorize(socket, timeout: .seconds(3))
@@ -135,13 +135,14 @@ public actor SamsungTizenDriver: TVDriver {
         try await connection.ping()
     }
 
-    private func inspect(_ endpoint: TVEndpoint, certificate: Data? = nil) async throws -> TVDevice {
-        let secureFirst = endpoint.port != 8001
-        let variants: [(UInt16, Bool)] = certificate != nil ? [(8002, true)]
-            : (secureFirst ? [(8002, true), (8001, false)] : [(8001, false), (8002, true)])
+    private func inspect(
+        _ endpoint: TVEndpoint, pairedPort: UInt16? = nil, certificate: Data? = nil
+    ) async throws -> TVDevice {
+        let ports: [UInt16] = pairedPort.map { [$0] } ?? (endpoint.port == 8001 ? [8001, 8002] : [8002, 8001])
         var last: any Error = TVError.unreachable
-        for (port, secure) in variants {
+        for port in ports {
             do {
+                let secure = port == 8002
                 let url = try socketURL(host: endpoint.host, port: port, scheme: secure ? "https" : "http", path: "/api/v2/")
                 let trust: TLSPeerTrust = certificate.map(TLSPeerTrust.pinned) ?? (secure ? .pairing : .system)
                 let response = try await http.request(HTTPRequest(.get, url: url, trust: trust))
