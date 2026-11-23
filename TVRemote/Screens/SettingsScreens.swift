@@ -68,6 +68,20 @@ struct DiagnosticsScreen: View {
                 }
             }
             Panel {
+                Text("Recent commands")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                if connection.recentCommands.isEmpty {
+                    Text("No commands sent yet.")
+                        .font(RemoteTheme.metadata)
+                        .foregroundStyle(RemoteTheme.secondary)
+                }
+                ForEach(connection.recentCommands) { command in
+                    DetailRow(icon: "arrow.up.right", title: command.title,
+                              detail: command.timestamp.formatted(.dateTime.hour().minute().second()))
+                }
+            }
+            Panel {
                 DetailRow(icon: "wifi", title: "Wi-Fi and TV network",
                           detail: "Connect your iPhone and TV to the same Wi-Fi. Avoid guest networks.")
                 DetailRow(icon: "lock.shield", title: "Local Network permission",

@@ -5,6 +5,12 @@ import TVDriverKit
 @MainActor
 @Observable
 final class ConnectionManager {
+    struct RecentCommand: Identifiable {
+        let id = UUID()
+        let timestamp = Date()
+        let title: String
+    }
+
     private(set) var state: ConnectionState = .idle
     private(set) var devices: [TVDevice] = []
     private(set) var savedDevices: [TVDevice] = []
@@ -14,6 +20,7 @@ final class ConnectionManager {
     private(set) var isConnecting = false
     private(set) var feedback: String?
     private(set) var error: String?
+    private(set) var recentCommands: [RecentCommand] = []
 
     let isDemo: Bool
     private let driver: any TVDriver
@@ -116,26 +123,26 @@ final class ConnectionManager {
 
     func send(_ key: RemoteKey) async {
         if key == .power, state == .asleep, !isConnecting, let device = currentDevice {
-            await perform("Waking \(device.name)") { try await driver.wake(device) }
+            await perform("Wake TV", feedback: "Waking \(device.name)") { try await driver.wake(device) }
         } else if canControl {
-            await perform(nil) { try await driver.send(key) }
+            await perform(key.commandTitle) { try await driver.send(key) }
         }
     }
 
     func launch(_ app: AppID, name: String) async {
         guard canControl else { return }
-        await perform("Opening \(name)") { try await driver.launch(app) }
+        await perform("Open \(name)", feedback: "Opening \(name)") { try await driver.launch(app) }
     }
 
     func search(_ query: String) async {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canControl, !query.isEmpty else { return }
-        await perform("Search sent to TV") { try await driver.search(query) }
+        await perform("TV search", feedback: "Search sent to TV") { try await driver.search(query) }
     }
 
     func movePointer(x: Double, y: Double) async {
         guard canControl, supportsPointer, let pointer = driver as? any PointerDriver else { return }
-        await perform(nil) { try await pointer.movePointer(x: x, y: y) }
+        await perform("Move pointer") { try await pointer.movePointer(x: x, y: y) }
     }
 
     private func connect(_ device: TVDevice, code: String?) async -> Bool {
@@ -168,14 +175,31 @@ final class ConnectionManager {
         }
     }
 
-    private func perform(_ message: String?, action: () async throws -> Void) async {
+    private func perform(_ command: String, feedback message: String? = nil,
+                         action: () async throws -> Void) async {
         error = nil
         do {
             try await action()
+            recentCommands.insert(RecentCommand(title: command), at: 0)
+            if recentCommands.count > 20 { recentCommands.removeLast() }
             feedback = message
         } catch {
             feedback = nil
             self.error = error.localizedDescription
+        }
+    }
+}
+
+private extension RemoteKey {
+    var commandTitle: String {
+        switch self {
+        case .select: "OK"
+        case .volumeUp: "Volume up"
+        case .volumeDown: "Volume down"
+        case .channelUp: "Channel up"
+        case .channelDown: "Channel down"
+        case .playPause: "Play or pause"
+        default: rawValue.capitalized
         }
     }
 }

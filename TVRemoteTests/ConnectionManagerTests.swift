@@ -68,6 +68,9 @@ final class ConnectionManagerTests: XCTestCase {
         await connection.search(" ")
         await connection.movePointer(x: 3, y: -2)
         XCTAssertEqual(driver.commands, [.key(.home), .app(app), .search("Movie night")])
+        XCTAssertEqual(connection.recentCommands.map(\.title), ["TV search", "Open Netflix", "Home"])
+        let timestamps = connection.recentCommands.map(\.timestamp)
+        XCTAssertEqual(timestamps, timestamps.sorted(by: >))
 
         _ = await connection.select(MockTVDriver.devices[1])
         _ = await connection.submit(code: MockTVDriver.demoCode)
