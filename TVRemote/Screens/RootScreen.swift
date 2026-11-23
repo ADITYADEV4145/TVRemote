@@ -18,7 +18,27 @@ struct RootScreen: View {
         self.forceLarge = forceLarge
     }
 
-    enum Tab { case remote, devices, apps, settings }
+    enum Tab: CaseIterable {
+        case remote, apps, devices, settings
+
+        var title: String {
+            switch self {
+            case .remote: "Remote"
+            case .apps: "Apps"
+            case .devices: "My TVs"
+            case .settings: "Settings"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .remote: "square.grid.2x2"
+            case .apps: "play"
+            case .devices: "tv"
+            case .settings: "slider.horizontal.3"
+            }
+        }
+    }
     enum RemoteDestination: Hashable { case diagnostics }
     enum Tool: String, Identifiable {
         case setup, keyboard, trackpad, voice, inputs, keypad
@@ -33,23 +53,38 @@ struct RootScreen: View {
                         DiagnosticsScreen(openRemote: returnToRemote)
                     }
             }
+            .toolbar(nativeTabBarVisibility, for: .tabBar)
             .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
 
             NavigationStack {
                 AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
             }
+            .toolbar(nativeTabBarVisibility, for: .tabBar)
             .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
 
             NavigationStack {
                 DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
                     .toolbar(.hidden, for: .navigationBar)
             }
+            .toolbar(nativeTabBarVisibility, for: .tabBar)
             .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
 
             NavigationStack {
                 SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
             }
+            .toolbar(nativeTabBarVisibility, for: .tabBar)
             .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if #available(iOS 26, *) {
+                FloatingTabBar(selection: $tab)
+                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 6)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(RemoteTheme.canvas)
+            }
         }
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
         .onAppear {
@@ -75,10 +110,63 @@ struct RootScreen: View {
         }
     }
 
+    private var nativeTabBarVisibility: Visibility {
+        if #available(iOS 26, *) { .hidden } else { .automatic }
+    }
+
     private func returnToRemote() {
         sheet = nil
         remotePath.removeAll()
         tab = .remote
+    }
+}
+
+/// Keep the content-owning TabView stable: only this small glass surface is
+/// recreated when its appearance changes, avoiding iOS 26's stale tab material.
+@available(iOS 26, *)
+private struct FloatingTabBar: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Binding var selection: RootScreen.Tab
+
+    var body: some View {
+        Group {
+            if reduceTransparency {
+                buttons.background(RemoteTheme.surface, in: Capsule())
+            } else {
+                buttons.glassEffect(.regular, in: .capsule)
+            }
+        }
+        .id(colorScheme)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isTabBar)
+        .accessibilityIdentifier("primaryTabBar")
+    }
+
+    private var buttons: some View {
+        HStack(spacing: 0) {
+            ForEach(RootScreen.Tab.allCases, id: \.self) { tab in
+                Button { selection = tab } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.symbol)
+                            .font(.system(size: 20, weight: .medium))
+                            .accessibilityHidden(true)
+                        Text(tab.title).font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .foregroundStyle(selection == tab ? RemoteTheme.accent : RemoteTheme.muted)
+                    .background(selection == tab ? RemoteTheme.accentSoft : .clear, in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        // As with system tabs, keep labels compact while content honors AX sizes.
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
     }
 }
 
