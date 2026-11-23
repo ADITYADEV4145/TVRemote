@@ -38,7 +38,7 @@ public actor SamsungTizenDriver: TVDriver {
         let socket = try await open(live, token: nil, trust: secure ? .pairing : .system)
         do {
             guard try await prompt(.approveOnTV) == .acknowledged else { throw TVError.invalidCommand }
-            let token = try await authorize(socket, timeout: .seconds(60))
+            let token = try await authorize(socket, timeout: .seconds(60), pairing: true)
             let certificate = socket.peerCertificate
             guard !secure || certificate != nil else { throw TVError.invalidResponse }
             await socket.close()
@@ -227,13 +227,14 @@ public actor SamsungTizenDriver: TVDriver {
         return try await sockets.open(url, trust: trust)
     }
 
-    private func authorize(_ socket: any WebSocketConnection, timeout: Duration) async throws -> String? {
+    private func authorize(_ socket: any WebSocketConnection, timeout: Duration, pairing: Bool = false) async throws -> String? {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let json = try await socket.receiveJSON(timeout: ContinuousClock.now.duration(to: deadline))
             switch json["event"].string {
             case "ms.channel.connect": return json["data"]["token"].string
-            case "ms.channel.unauthorized", "ms.channel.timeOut": throw TVError.credentialRejected
+            case "ms.channel.unauthorized": throw pairing ? TVError.pairingDeclined : TVError.credentialRejected
+            case "ms.channel.timeOut": throw pairing ? TVError.timedOut : TVError.credentialRejected
             default: continue
             }
         }

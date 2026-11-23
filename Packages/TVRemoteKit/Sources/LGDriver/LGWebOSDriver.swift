@@ -273,7 +273,9 @@ public actor LGWebOSDriver: TVDriver {
                     guard try await prompt(.approveOnTV) == .acknowledged else { throw TVError.invalidCommand }
                     prompted = true
                 }
-            case "error": throw TVError.credentialRejected
+            case "error":
+                if key == nil, message["error"].string?.hasPrefix("403 ") == true { throw TVError.pairingDeclined }
+                throw TVError.credentialRejected
             default: continue
             }
         }

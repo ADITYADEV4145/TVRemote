@@ -527,6 +527,10 @@ final class RemoteViewModel {
                 self.isConnecting = false
                 self.pairingTask = nil
                 let failure = error as? TVError
+                if failure == .pairingDeclined, selected.id.platform == .lg || selected.id.platform == .samsung {
+                    self.pairingDevice = device
+                    self.pairingPrompt = .approval
+                }
                 if self.pairingPrompt == .code, failure == .credentialRejected || failure == .invalidCommand {
                     self.startPairing(device, selected: selected, using: live,
                                       message: "That code didn’t match. Check the new code shown on your TV.")

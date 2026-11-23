@@ -28,7 +28,7 @@ final class SimulatedTVTests: XCTestCase {
         app.launch()
         app.buttons["Find my TV"].tap()
         app.buttons["Find TVs"].tap()
-        if brand == "samsung" { try await chaos("approval", for: brand, allow: false) }
+        if brand == "samsung" || brand == "lg" { try await chaos("approval", for: brand, allow: false) }
         enterAddress(port, in: app)
 
         if brand == "google" {
@@ -54,16 +54,16 @@ final class SimulatedTVTests: XCTestCase {
             XCTAssertFalse(mismatch.exists)
         } else if brand == "samsung" || brand == "lg" {
             let retry = app.buttons["Try again"]
+            if brand == "samsung" { assertApprovalPending(in: app, retry: retry) }
+            let rejected = app.staticTexts["The TV declined the pairing request."].waitForExistence(timeout: 8)
+            try await chaos("approval", for: brand, allow: true)
+            XCTAssertTrue(rejected)
+            XCTAssertTrue(app.staticTexts["Look up at the TV"].exists)
+            XCTAssertFalse(app.staticTexts["Add by IP address"].exists)
+            XCTAssertTrue(retry.isEnabled)
+            XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
+            retry.tap()
             assertApprovalPending(in: app, retry: retry)
-            if brand == "samsung" {
-                let rejected = app.staticTexts["Pair again with the TV to continue."].waitForExistence(timeout: 8)
-                try await chaos("approval", for: brand, allow: true)
-                XCTAssertTrue(rejected)
-                XCTAssertTrue(retry.isEnabled)
-                XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
-                retry.tap()
-                assertApprovalPending(in: app, retry: retry)
-            }
             capture("\(brand)-approval")
         }
         let openRemote = app.buttons["Open remote"]
@@ -93,7 +93,7 @@ final class SimulatedTVTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12))
         XCTAssertTrue(app.staticTexts["Connecting to TV"].exists)
         XCTAssertFalse(retry.isEnabled)
-        XCTAssertFalse(app.staticTexts["Pair again with the TV to continue."].exists)
+        XCTAssertFalse(app.staticTexts["The TV declined the pairing request."].exists)
     }
 
     @MainActor
