@@ -252,6 +252,7 @@ final class RemoteViewModel {
     func select(_ device: TVDevice) async -> Bool {
         guard !isConnecting else { return false }
         selectionGeneration += 1
+        unavailableChannelTVs.removeAll()
         cancelPairing()
         pairingDevice = nil
         error = nil
@@ -420,12 +421,18 @@ final class RemoteViewModel {
 
     func selectInput(_ input: TVInput) async {
         guard canControl, supportsInputSelection, let live else { return }
-        await perform("Switch input") { try await live.manager.selectInput(input) }
+        await perform("Switch input") {
+            try await live.manager.selectInput(input)
+            self.unavailableChannelTVs.removeAll()
+        }
     }
 
     func openTVInputMenu() async {
         guard canControl, supportsInputMenu, let live else { return }
-        await perform("Open TV input menu") { try await live.manager.send(.inputMenu) }
+        await perform("Open TV input menu") {
+            try await live.manager.send(.inputMenu)
+            self.unavailableChannelTVs.removeAll()
+        }
     }
 
     func search(_ query: String) async {

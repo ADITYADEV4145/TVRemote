@@ -72,6 +72,7 @@ private actor LiveFixtureDriver: TVDriver {
         }
     }
     func launch(_ app: TVRemoteCore.AppID) async throws { throw TVError.notSupported }
+    func selectInput(_ input: TVInput) throws { try requireOnline() }
     func search(_ query: String) async throws { throw TVError.notSupported }
     func wake(_ tv: TVRemoteCore.TVDevice) async {
         wakes += 1
@@ -301,6 +302,21 @@ final class ConnectionManagerTests: XCTestCase {
         await connection.send(.volumeUp)
         let keys = await driver.keys
         XCTAssertEqual(keys, [.channelUp, .volumeUp])
+    }
+
+    func testChannelRejectionDoesNotPersistAcrossInputChangesAndReconnection() async throws {
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys, .inputSelection])
+        try await session.credentials.save(.token("paired"), for: device.id)
+        _ = await connection.select(session.remember(device))
+        await driver.disableChannel()
+        await connection.send(.channelUp)
+        XCTAssertFalse(connection.canChangeChannel)
+        await connection.selectInput(TVInput(id: "HDMI_1", name: "HDMI 1"))
+        XCTAssertTrue(connection.canChangeChannel)
+        await connection.send(.channelUp)
+        XCTAssertFalse(connection.canChangeChannel)
+        _ = await connection.reconnect()
+        XCTAssertTrue(connection.canChangeChannel)
     }
 
     func testKeyboardDraftIsScopedToTheSelectedTV() async throws {
