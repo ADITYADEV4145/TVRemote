@@ -208,11 +208,11 @@ struct PrivacyScreen: View {
             ScreenHeading("", "Privacy", "Local by design.")
             Panel {
                 DetailRow(icon: "person.crop.circle.badge.checkmark", title: "No account", detail: "Use the local remote without signing in")
-                DetailRow(icon: "iphone", title: "On this iPhone", detail: "Appearance, favorites and scene drafts are stored locally")
+                DetailRow(icon: "iphone", title: "On this iPhone", detail: "Saved TVs, appearance, favorites and scene drafts are stored locally")
                 DetailRow(icon: "mic.slash", title: "No recording", detail: "This build never requests microphone or speech access")
                 DetailRow(icon: "hand.raised", title: "No automatic diagnostics", detail: "There is no telemetry service in this build")
             }
-            SupportingCopy(title: "Pairing in this demo", detail: "Simulated connections are held in memory and reset on app restart. Real pairing needs Keychain integration before release.")
+            SupportingCopy(title: "Saved connections", detail: "In normal use, pairing credentials stay in this iPhone’s Keychain. Saved TV names and network addresses stay in app storage so you can reconnect after a restart. Forgetting a TV removes its saved connection from this iPhone.")
             NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
         }.modifier(TaskSurface())
     }

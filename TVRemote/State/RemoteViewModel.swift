@@ -294,7 +294,7 @@ final class RemoteViewModel {
 
     func launch(_ app: AppID, name: String) async {
         guard canControl else { return }
-        await perform("Open \(name)", feedback: "Opening \(name)") { [self] in
+        await perform(isDemo ? "Open \(name)" : "Open app", feedback: "Opening \(name)") { [self] in
             if let live { try await live.manager.launch(app) }
             else { try await driver?.launch(app) }
         }
@@ -314,7 +314,7 @@ final class RemoteViewModel {
 
     func selectInput(_ input: TVInput) async {
         guard canControl, supportsInputSelection, let live else { return }
-        await perform("Switch to \(input.name)") { try await live.manager.selectInput(input) }
+        await perform("Switch input") { try await live.manager.selectInput(input) }
     }
 
     func openTVInputMenu() async {
