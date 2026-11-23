@@ -82,11 +82,12 @@ final class RemoteViewModel {
     var supportsManualAddress: Bool { true }
     var awaitingTVApproval: Bool { pairingPrompt == .approval && isConnecting }
 
-    func monitor() async {
+    func monitor(clock: any ConnectionClock = SystemConnectionClock()) async {
         guard let live else { return }
         while !Task.isCancelled {
-            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            guard canControl, commandTail == nil, healthCheck == nil else { continue }
+            do { try await clock.sleep(for: .seconds(2)) } catch { return }
+            guard currentDevice != nil, !isConnecting, state == .ready || state == .degraded,
+                  commandTail == nil, healthCheck == nil else { continue }
             let check = Task {
                 try? await live.manager.checkConnection()
                 if let device = await live.manager.currentDevice, currentDevice != nil, !isConnecting {

@@ -2,6 +2,26 @@ import XCTest
 @testable import TVRemote
 import TVRemoteKit
 
+private struct MonitorClock: ConnectionClock {
+    let sleeps = AsyncStream<Duration>.makeStream()
+    let ticks = AsyncStream<Void>.makeStream()
+
+    func sleep(for duration: Duration) async throws {
+        sleeps.continuation.yield(duration)
+        for await _ in ticks.stream { break }
+        try Task.checkCancellation()
+    }
+}
+
+private actor ImmediateRecoveryClock: ConnectionClock {
+    private(set) var elapsed: Duration = .zero
+
+    func sleep(for duration: Duration) throws {
+        try Task.checkCancellation()
+        elapsed += duration
+    }
+}
+
 private actor LiveFixtureDriver: TVDriver {
     nonisolated var state: AsyncStream<TVRemoteCore.ConnectionState> { AsyncStream { $0.finish() } }
     private var online = true
@@ -14,6 +34,7 @@ private actor LiveFixtureDriver: TVDriver {
     private var holdFirstSend = false
 
     func goOffline() { online = false }
+    func goOnline() { online = true }
     func holdNextSend() { holdFirstSend = true }
     func waitForSend() async { for await _ in firstSend.stream { break } }
     func releaseSend() { release.continuation.finish() }
@@ -167,6 +188,42 @@ final class ConnectionManagerTests: XCTestCase {
         }
     }
 
+    func testForegroundMonitorReconnectsLGAfterFastRetriesAreExhausted() async throws {
+        let recoveryClock = ImmediateRecoveryClock()
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys], clock: recoveryClock)
+        try await session.credentials.save(.webOSClientKey("paired-key", certificate: Data([1])), for: device.id)
+        let connected = await connection.select(session.remember(device))
+        XCTAssertTrue(connected)
+        await driver.goOffline()
+
+        let clock = MonitorClock()
+        var sleeps = clock.sleeps.stream.makeAsyncIterator()
+        let monitor = Task { await connection.monitor(clock: clock) }
+        defer { monitor.cancel() }
+        let firstPoll = await sleeps.next()
+        XCTAssertEqual(firstPoll, .seconds(2))
+        clock.ticks.continuation.yield(())
+        let secondPoll = await sleeps.next()
+        XCTAssertEqual(secondPoll, .seconds(2))
+        let fastRetryElapsed = await recoveryClock.elapsed
+        XCTAssertGreaterThan(fastRetryElapsed, .zero)
+        XCTAssertLessThan(fastRetryElapsed + .seconds(4), .seconds(8))
+        await waitForState(.degraded, on: connection)
+        XCTAssertFalse(connection.canControl)
+
+        clock.ticks.continuation.yield(())
+        _ = await sleeps.next()
+        await waitForState(.degraded, on: connection)
+        await driver.goOnline()
+        clock.ticks.continuation.yield(())
+        _ = await sleeps.next()
+        await waitForState(.ready, on: connection)
+        XCTAssertTrue(connection.canControl)
+        await connection.send(.volumeUp)
+        let keys = await driver.keys
+        XCTAssertEqual(keys, [.volumeUp])
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)
@@ -262,7 +319,8 @@ final class ConnectionManagerTests: XCTestCase {
         }
     }
 
-    private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities) async throws
+    private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities,
+                             clock: any ConnectionClock = ImmediateRecoveryClock()) async throws
         -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
         let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),
                                           name: "TV", endpoint: TVEndpoint(host: "tv.local", port: 3001),
@@ -271,7 +329,7 @@ final class ConnectionManagerTests: XCTestCase {
         let credentials = MemoryCredentialStore()
         let manager = TVRemoteCore.ConnectionManager(
             drivers: [TVDriverFactory(platform: platform) { driver }], credentials: credentials,
-            retryDelays: [.zero]
+            clock: clock
         )
         let suite = "TVRemoteTests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
