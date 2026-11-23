@@ -262,6 +262,16 @@ final class RemoteViewModel {
         isConnecting = false
     }
 
+    func rename(_ device: TVDevice, to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let live, !name.isEmpty else { return }
+        live.rename(device.id, to: name)
+        savedDevices = live.savedDevices
+        if currentDevice?.id == device.id {
+            currentDevice = savedDevices.first { $0.id == device.id }
+        }
+    }
+
     func send(_ key: RemoteKey) async {
         let changesChannel = key == .channelUp || key == .channelDown
         if changesChannel && !canChangeChannel { return }

@@ -285,6 +285,19 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.keyboardDraft, "First TV’s draft")
     }
 
+    func testSavedTVAliasSurvivesRefreshAndNewSession() async throws {
+        let defaults = try fixtureDefaults()
+        let (_, session, device, _) = try await liveFixture([.remoteKeys], defaults: defaults)
+        let original = session.save(device)
+        session.rename(original.id, to: "Den")
+        XCTAssertEqual(session.save(device).name, "Den")
+        XCTAssertEqual(session.savedDevices.first?.name, "Den")
+        let relaunched = LiveTVSession(defaults: defaults, credentials: session.credentials, manager: session.manager)
+        XCTAssertEqual(relaunched.savedDevices.first?.name, "Den")
+        try await session.forget(original.id)
+        XCTAssertEqual(session.save(device).name, original.name)
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)
@@ -381,7 +394,7 @@ final class ConnectionManagerTests: XCTestCase {
     }
 
     private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities,
-                             clock: any ConnectionClock = ImmediateRecoveryClock()) async throws
+                             clock: any ConnectionClock = ImmediateRecoveryClock(), defaults: UserDefaults? = nil) async throws
         -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
         let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),
                                           name: "TV", endpoint: TVEndpoint(host: "tv.local", port: 3001),
@@ -392,11 +405,15 @@ final class ConnectionManagerTests: XCTestCase {
             drivers: [TVDriverFactory(platform: platform) { driver }], credentials: credentials,
             clock: clock
         )
+        let session = LiveTVSession(defaults: try defaults ?? fixtureDefaults(), credentials: credentials, manager: manager)
+        return (RemoteViewModel(live: session), session, device, driver)
+    }
+
+    private func fixtureDefaults() throws -> UserDefaults {
         let suite = "TVRemoteTests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
-        let session = LiveTVSession(defaults: defaults, credentials: credentials, manager: manager)
-        return (RemoteViewModel(live: session), session, device, driver)
+        return defaults
     }
 
     func testForgettingTheActiveTVDisconnectsAndRequiresPairingAgain() async {

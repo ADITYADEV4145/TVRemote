@@ -11,6 +11,7 @@ final class LiveTVSession {
     private var known: [String: Device] = [:]
     private let defaults: UserDefaults
     private let savedKey = "TVRemoteKit.savedDevices"
+    private let aliasesKey = "TVRemoteKit.deviceAliases"
 
     init(defaults: UserDefaults = .standard,
          credentials: any CredentialStore = TVRemoteKit.defaultCredentialStore(),
@@ -29,13 +30,18 @@ final class LiveTVSession {
         return (try? JSONDecoder().decode([Device].self, from: data)) ?? []
     }
 
-    var savedDevices: [TVDevice] { stored.map(Self.presentation) }
+    private var aliases: [String: String] {
+        get { defaults.dictionary(forKey: aliasesKey) as? [String: String] ?? [:] }
+        set { defaults.set(newValue, forKey: aliasesKey) }
+    }
+
+    var savedDevices: [TVDevice] { stored.map(presentation) }
     var state: AsyncStream<TVRemoteCore.ConnectionState> { manager.state }
     func device(_ id: String) -> Device? { known[id] }
 
     func remember(_ device: Device) -> TVDevice {
         known[Self.id(device)] = device
-        return Self.presentation(device)
+        return presentation(device)
     }
 
     func save(_ device: Device) -> TVDevice {
@@ -52,6 +58,12 @@ final class LiveTVSession {
         guard let device = known[id] else { return }
         try await credentials.remove(for: device.id)
         defaults.set(try? JSONEncoder().encode(stored.filter { $0.id != device.id }), forKey: savedKey)
+        aliases.removeValue(forKey: id)
+    }
+
+    func rename(_ id: String, to name: String) {
+        guard stored.contains(where: { Self.id($0) == id }) else { return }
+        aliases[id] = name
     }
 
     func find(_ address: String) async throws -> TVDevice {
@@ -107,7 +119,7 @@ final class LiveTVSession {
 
     private static func id(_ device: Device) -> String { "\(device.id.platform.rawValue):\(device.id.identifier)" }
 
-    private static func presentation(_ device: Device) -> TVDevice {
+    private func presentation(_ device: Device) -> TVDevice {
         let platform: String
         switch device.id.platform {
         case .roku: platform = "Roku TV"
@@ -115,7 +127,8 @@ final class LiveTVSession {
         case .samsung: platform = "Samsung TV"
         case .lg: platform = "LG webOS"
         }
-        return TVDevice(id: id(device), name: device.name, platform: platform, address: device.endpoint.host,
+        let id = Self.id(device)
+        return TVDevice(id: id, name: aliases[id] ?? device.name, platform: platform, address: device.endpoint.host,
                         requiresPairingCode: device.id.platform == .googleTV)
     }
 

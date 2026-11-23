@@ -245,18 +245,50 @@ struct DevicesScreen: View {
 struct TVDetailScreen: View {
     @Environment(RemoteViewModel.self) private var connection
     let device: TVDevice
+    private var savedDevice: TVDevice { connection.savedDevices.first { $0.id == device.id } ?? device }
 
     var body: some View {
         ScreenBody {
-            ScreenHeading("", device.name, device.platform)
+            ScreenHeading("", savedDevice.name, device.platform)
             Panel {
                 DetailRow(icon: "tv", title: "Connection", detail: connection.currentDevice?.id == device.id ? connection.state.rawValue : "Not selected")
                 DetailRow(icon: "network", title: "TV address", detail: device.address)
                 DetailRow(icon: "hand.point.up.left", title: "Touchpad", detail: device.supportsPointer ? "Available with this driver" : "Not supported")
             }
             NavigationLink("Connection details") { ConnectionDetailsScreen(device: device) }.buttonStyle(SecondaryActionStyle())
+            if !connection.isDemo {
+                NavigationLink("Rename TV") { RenameTVScreen(device: savedDevice) }
+                    .buttonStyle(SecondaryActionStyle())
+            }
             NavigationLink("Forget this TV") { ForgetTVScreen(device: device) }.buttonStyle(SecondaryActionStyle(destructive: true))
             SupportingCopy(title: "On this phone only", detail: "Forgetting removes this app’s pairing. It does not change TV apps or settings.")
+        }
+        .modifier(TaskSurface())
+    }
+}
+
+private struct RenameTVScreen: View {
+    @Environment(RemoteViewModel.self) private var connection
+    @Environment(\.dismiss) private var dismiss
+    let device: TVDevice
+    @State private var name: String
+
+    init(device: TVDevice) {
+        self.device = device
+        _name = State(initialValue: device.name)
+    }
+
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Rename TV", "This name is only used on this iPhone.")
+            TextField("TV name", text: $name).padding(16)
+                .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+            Button("Save name") {
+                connection.rename(device, to: name)
+                dismiss()
+            }
+            .buttonStyle(PrimaryActionStyle())
+            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .modifier(TaskSurface())
     }
