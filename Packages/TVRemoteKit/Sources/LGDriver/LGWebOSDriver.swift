@@ -68,7 +68,7 @@ public actor LGWebOSDriver: TVDriver {
             do {
                 guard live.id == tv.id else { throw TVError.identityMismatch }
                 _ = try await register(socket, key: key)
-                let address = tv.wakeAddress ?? savedAddress
+                let address = live.wakeAddress ?? tv.wakeAddress ?? savedAddress
                 let network = address == nil && wakeService != nil
                     ? try await networkAddress(socket) : nil
                 let wakeAddress = address ?? network
@@ -104,8 +104,10 @@ public actor LGWebOSDriver: TVDriver {
         case .volumeUp: _ = try await request("audio/volumeUp")
         case .volumeDown: _ = try await request("audio/volumeDown")
         case .mute:
-            let status = try await request("audio/getStatus")
-            guard let muted = status["mute"].bool ?? status["muted"].bool else { throw TVError.invalidResponse }
+            let status = try await request("audio/getVolume")
+            guard let muted = status["volumeStatus"]["muteStatus"].bool ?? status["muted"].bool else {
+                throw TVError.invalidResponse
+            }
             _ = try await request("audio/setMute", ["mute": .bool(!muted)])
         case .channelUp: _ = try await request("tv/channelUp")
         case .channelDown: _ = try await request("tv/channelDown")
@@ -129,7 +131,7 @@ public actor LGWebOSDriver: TVDriver {
 
     public func launch(_ app: AppID) async throws {
         guard !app.rawValue.isEmpty else { throw TVError.invalidCommand }
-        _ = try await request("com.webos.applicationManager/launch", ["id": .string(app.rawValue)])
+        _ = try await request("system.launcher/launch", ["id": .string(app.rawValue)])
     }
 
     public func search(_ query: String) async throws { throw TVError.notSupported }
@@ -155,17 +157,42 @@ public actor LGWebOSDriver: TVDriver {
             do {
                 let url = try socketURL(host: endpoint.host, port: port, scheme: secure ? "wss" : "ws")
                 let policy: TLSPeerTrust = certificate.map(TLSPeerTrust.pinned) ?? (secure ? .pairing : .system)
-                let socket = try await sockets.open(url, trust: policy)
-                let tv = TVDevice(id: TVIdentity(platform: .lg, identifier: endpoint.host.lowercased()),
-                                  name: "LG webOS TV", endpoint: TVEndpoint(host: endpoint.host, port: port),
-                                  capabilities: [.remoteKeys, .launch, .keyboard])
-                return (tv, socket)
+                return try await identify(endpoint: TVEndpoint(host: endpoint.host, port: port), url: url, trust: policy)
             } catch {
                 if error is CancellationError || error as? TVError == .identityMismatch { throw error }
                 last = error
             }
         }
         throw last
+    }
+
+    private func identify(
+        endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust
+    ) async throws -> (TVDevice, any WebSocketConnection) {
+        var socket = try await sockets.open(url, trust: trust)
+        var identifier = endpoint.host.lowercased()
+        var name = "LG webOS TV"
+        var address: MACAddress?
+        do {
+            try await socket.sendJSON(["id": .string("hello"), "type": .string("hello")])
+            let reply = try await socket.receiveJSON(timeout: .seconds(1))
+            if reply["type"].string == "hello", reply["id"].string == "hello" {
+                let payload = reply["payload"]
+                if let uuid = payload["deviceUUID"].string {
+                    identifier = uuid.lowercased()
+                    address = MACAddress(rawValue: uuid)
+                }
+                name = payload["deviceName"].string ?? name
+            }
+        } catch {
+            await socket.close()
+            if error is CancellationError { throw error }
+            socket = try await sockets.open(url, trust: trust)
+        }
+        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard]
+        if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
+        return (TVDevice(id: TVIdentity(platform: .lg, identifier: identifier), name: name,
+                         endpoint: endpoint, capabilities: capabilities, wakeAddress: address), socket)
     }
 
     private func register(

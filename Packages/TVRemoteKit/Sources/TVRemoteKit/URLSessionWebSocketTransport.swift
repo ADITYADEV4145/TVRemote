@@ -21,7 +21,7 @@ public struct URLSessionWebSocketTransport: WebSocketTransport {
         let connection = SessionWebSocket(session: session, socket: socket, delegate: delegate)
         socket.resume()
         do {
-            try await connection.ping()
+            try await connection.socketOperation { try await delegate.waitForWebSocket() }
             return connection
         } catch {
             await connection.close()
@@ -87,15 +87,38 @@ private final class SessionWebSocket: WebSocketConnection {
     }
 }
 
-final class TVSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class TVSessionDelegate: NSObject, URLSessionWebSocketDelegate, @unchecked Sendable {
     private let trust: TLSPeerTrust
     private let lock = NSLock()
     private var certificate: Data?
     private var rejected = false
+    private let socketOpened: AsyncThrowingStream<Void, any Error>
+    private let socketOpening: AsyncThrowingStream<Void, any Error>.Continuation
 
-    init(trust: TLSPeerTrust) { self.trust = trust }
+    init(trust: TLSPeerTrust) {
+        self.trust = trust
+        (socketOpened, socketOpening) = AsyncThrowingStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+    }
 
     var peerCertificate: Data? { lock.withLock { certificate } }
+
+    func waitForWebSocket() async throws {
+        var events = socketOpened.makeAsyncIterator()
+        guard try await events.next() != nil else {
+            try Task.checkCancellation()
+            throw TVError.unreachable
+        }
+    }
+
+    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+        socketOpening.yield(())
+        socketOpening.finish()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard task is URLSessionWebSocketTask else { return }
+        socketOpening.finish(throwing: error.map(map) ?? TVError.unreachable)
+    }
 
     func map(_ error: any Error) -> any Error {
         if lock.withLock({ rejected }) { return TVError.identityMismatch }

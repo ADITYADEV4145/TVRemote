@@ -143,17 +143,18 @@ private struct SocketDiscovery: DiscoverySource {
 
 @Test func lgRegistrationCommandsAndCredentialReuse() async throws {
     let webOSPin = Data([9, 8])
+    let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"webos-test-tv","deviceName":"Bedroom"}}"#
     let hello = #"{"id":"register","type":"response","payload":{"pairingType":"PROMPT","returnValue":true}}"#
     let registered = #"{"id":"register","type":"registered","payload":{"client-key":"webos-key"}}"#
     let network = #"{"id":"request-1","type":"response","payload":{"wired":{"state":"connected","macAddress":"02:11:22:33:44:55"}}}"#
     let volume = #"{"id":"request-2","type":"response","payload":{"returnValue":true}}"#
     let pointerPath = #"{"id":"request-3","type":"response","payload":{"socketPath":"ws://tv.local:3000/resources/pointer"}}"#
     let launched = #"{"id":"request-1","type":"response","payload":{"returnValue":true}}"#
-    let probe = SocketTranscript([], certificate: webOSPin)
-    let pairing = SocketTranscript([hello, registered], certificate: webOSPin)
-    let active = SocketTranscript([registered, network, volume, pointerPath], certificate: webOSPin)
+    let probe = SocketTranscript([identity], certificate: webOSPin)
+    let pairing = SocketTranscript([identity, hello, registered], certificate: webOSPin)
+    let active = SocketTranscript([identity, registered, network, volume, pointerPath], certificate: webOSPin)
     let pointer = SocketTranscript([], certificate: webOSPin)
-    let restored = SocketTranscript([registered, launched], certificate: webOSPin)
+    let restored = SocketTranscript([identity, registered, launched], certificate: webOSPin)
     let sockets = SocketScript([.success(probe), .success(pairing), .success(active), .success(pointer), .success(restored)])
     let datagram = DatagramTranscript()
     let wake = WakeOnLAN(transport: datagram)
@@ -162,6 +163,8 @@ private struct SocketDiscovery: DiscoverySource {
         LGWebOSDriver(sockets: sockets, wake: wake)
     }], credentials: store)
     let tv = try await manager.probe(TVEndpoint(host: "tv.local", port: 3001), platform: .lg)
+    #expect(tv.id.identifier == "webos-test-tv")
+    #expect(tv.name == "Bedroom")
     try await manager.pair(tv) { prompt in
         #expect(prompt == .approveOnTV)
         return .acknowledged
@@ -179,16 +182,18 @@ private struct SocketDiscovery: DiscoverySource {
     #expect(await sockets.attempts[3].url.absoluteString == "wss://tv.local:3001/resources/pointer")
     #expect(await sockets.attempts.map(\.trust) == [.pairing, .pairing, .pinned(webOSPin), .pinned(webOSPin), .pinned(webOSPin)])
     let sent = try await active.outbound()
-    #expect(sent[0]["payload"]["client-key"].string == "webos-key")
-    #expect(sent[0]["payload"]["manifest"]["manifestVersion"].string == "1")
-    #expect(sent[2]["uri"].string == "ssap://audio/volumeUp")
+    #expect(sent[1]["payload"]["client-key"].string == "webos-key")
+    #expect(sent[1]["payload"]["manifest"]["manifestVersion"].string == "1")
+    #expect(sent[3]["uri"].string == "ssap://audio/volumeUp")
     let resume = try await restored.outbound()
-    #expect(resume[1]["payload"]["id"].string == "netflix")
+    #expect(resume[2]["uri"].string == "ssap://system.launcher/launch")
+    #expect(resume[2]["payload"]["id"].string == "netflix")
 }
 
 @Test func lgDiscoverFallsBackToPlainAndRejectsExpiredClientKey() async throws {
-    let probe = SocketTranscript([])
-    let invalid = SocketTranscript([#"{"id":"register","type":"error","error":"403 forbidden"}"#])
+    let unsupported = #"{"id":"hello","type":"error","error":"401 not registered"}"#
+    let probe = SocketTranscript([unsupported])
+    let invalid = SocketTranscript([unsupported, #"{"id":"register","type":"error","error":"403 forbidden"}"#])
     let sockets = SocketScript([.failure(.unreachable), .success(probe), .success(invalid)])
     let discovery = SocketDiscovery(endpoint: TVEndpoint(host: "tv.local", port: 3001))
     let driver = LGWebOSDriver(sockets: sockets, discovery: discovery)
@@ -199,6 +204,18 @@ private struct SocketDiscovery: DiscoverySource {
     await #expect(throws: TVError.credentialRejected) { try await driver.connect(tv, .clientKey("expired")) }
     #expect(await invalid.closed)
     #expect(await sockets.attempts.map { $0.url.port } == [3001, 3000, 3000])
+}
+
+@Test func lgRejectsReplacementIdentityBeforeSendingClientKey() async throws {
+    let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"replacement"}}"#
+    let control = SocketTranscript([identity])
+    let sockets = SocketScript([.success(control)])
+    let driver = LGWebOSDriver(sockets: sockets)
+    let tv = TVDevice(id: TVIdentity(platform: .lg, identifier: "original"), name: "LG",
+                      endpoint: TVEndpoint(host: "tv.local", port: 3000), capabilities: .remoteKeys)
+    await #expect(throws: TVError.identityMismatch) { try await driver.connect(tv, .clientKey("old-key")) }
+    #expect(try await control.outbound().map { $0["type"].string } == ["hello"])
+    #expect(await control.closed)
 }
 
 @Test func wakeOnLANSendsStandardBroadcastPacket() async throws {
