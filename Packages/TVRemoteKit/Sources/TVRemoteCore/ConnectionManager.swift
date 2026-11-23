@@ -76,7 +76,7 @@ public actor ConnectionManager {
         }
     }
 
-    public func connect(_ tv: TVDevice) async throws {
+    public func connect(_ tv: TVDevice, allowWake: Bool = true) async throws {
         let factory = try factory(for: tv.id.platform)
         let token = begin(tv: tv)
         do {
@@ -88,7 +88,8 @@ public actor ConnectionManager {
                 guard Self.isRecoverable(error) else { throw error }
                 try ensureCurrent(token)
                 transition(.degraded)
-                try await recover(tv, credential: credential, factory: factory, token: token, initialError: error)
+                try await recover(tv, credential: credential, factory: factory, token: token,
+                                  attemptWake: allowWake, initialError: error)
             }
         } catch {
             fail(error, token: token)

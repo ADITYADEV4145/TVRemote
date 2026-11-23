@@ -88,7 +88,7 @@ final class RemoteViewModel {
         isConnecting = true
         defer { isConnecting = false }
         do {
-            try await live.manager.connect(tv)
+            try await live.manager.connect(tv, allowWake: false)
             await didConnect(using: live)
         } catch is CancellationError {
             restoredSelection = false
@@ -486,7 +486,7 @@ final class RemoteViewModel {
         isConnecting = true
         currentDevice = savedDevices.first(where: { $0.id == device.id })
         do {
-            try await live.manager.connect(selected)
+            try await live.manager.connect(selected, allowWake: false)
             await didConnect(using: live)
             isConnecting = false
             return true

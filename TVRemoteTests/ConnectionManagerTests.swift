@@ -337,6 +337,24 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(session.save(device).name, original.name)
     }
 
+    func testRelaunchNeverWakesTheSavedTVUntilPowerIsTapped() async throws {
+        for platform: TVPlatform in [.roku, .samsung, .lg] {
+            let (_, session, device, driver) = try await liveFixture(platform: platform, [.remoteKeys, .networkWake])
+            if platform != .roku { try await session.credentials.save(.token("paired"), for: device.id) }
+            let saved = session.save(device)
+            session.lastSelectedID = saved.id
+            await driver.goOffline()
+            let reopened = RemoteViewModel(live: session)
+            await reopened.restoreSelection()
+            let automaticWakes = await driver.wakes
+            XCTAssertEqual(automaticWakes, 0, "\(platform)")
+            XCTAssertTrue(reopened.canPower)
+            await reopened.send(.power)
+            let explicitWakes = await driver.wakes
+            XCTAssertEqual(explicitWakes, 1, "\(platform)")
+        }
+    }
+
     func testRelaunchReconnectsLastSelectedSavedTV() async throws {
         let defaults = try fixtureDefaults()
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys], defaults: defaults)
