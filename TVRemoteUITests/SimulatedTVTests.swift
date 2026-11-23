@@ -42,11 +42,7 @@ final class SimulatedTVTests: XCTestCase {
             app.buttons["Pair TV"].tap()
         } else if brand == "samsung" || brand == "lg" {
             let retry = app.buttons["Try again"]
-            XCTAssertTrue(app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12))
-            XCTAssertTrue(app.staticTexts["Connecting to TV"].exists)
-            XCTAssertFalse(retry.isEnabled)
-            XCTAssertFalse(app.staticTexts["Pair again with the TV to continue."].exists)
-            capture("\(brand)-approval")
+            assertApprovalPending(in: app, retry: retry)
             if brand == "samsung" {
                 let rejected = app.staticTexts["Pair again with the TV to continue."].waitForExistence(timeout: 8)
                 try await chaos("approval", for: brand, allow: true)
@@ -55,7 +51,9 @@ final class SimulatedTVTests: XCTestCase {
                 XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
                 retry.tap()
                 enterAddress(port, in: app)
+                assertApprovalPending(in: app, retry: retry)
             }
+            capture("\(brand)-approval")
         }
         let openRemote = app.buttons["Open remote"]
         XCTAssertTrue(openRemote.waitForExistence(timeout: 20))
@@ -70,11 +68,21 @@ final class SimulatedTVTests: XCTestCase {
         if brand != "roku" { try await chaos("drop", for: brand) }
         try await chaos("rebind", for: brand)
         let afterRestart = try await status(brand).key_count
+        // The old UI state can still be Connected until the next health check observes the drop.
+        try await Task.sleep(for: .seconds(3))
         XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 20))
         volume.tap()
         try await waitForKey(on: brand, after: afterRestart)
         XCTAssertTrue(app.staticTexts["Connected"].waitForExistence(timeout: 10))
         capture("\(brand)-reconnected")
+    }
+
+    @MainActor
+    private func assertApprovalPending(in app: XCUIApplication, retry: XCUIElement) {
+        XCTAssertTrue(app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12))
+        XCTAssertTrue(app.staticTexts["Connecting to TV"].exists)
+        XCTAssertFalse(retry.isEnabled)
+        XCTAssertFalse(app.staticTexts["Pair again with the TV to continue."].exists)
     }
 
     @MainActor
