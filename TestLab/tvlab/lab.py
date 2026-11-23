@@ -162,6 +162,7 @@ class Lab:
         elif action == "drop":
             await tv.disconnect()
         elif action == "revoke":
+            tv.credential_epoch += 1
             tv.credentials.clear()
             await tv.disconnect()
         elif action == "approval":

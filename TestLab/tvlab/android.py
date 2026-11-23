@@ -170,6 +170,7 @@ async def pair(tv, link, client, server):
         return fields(get(message, tag))
 
     fingerprint = client.fingerprint(hashes.SHA256())
+    credential_epoch = tv.credential_epoch
     pending = object()
     try:
         await expect(10)
@@ -199,6 +200,8 @@ async def pair(tv, link, client, server):
         LOGGER.info("Google TV pairing code: %s", tv.code)
         await reply(31)
         offered = get(await expect(40), 1, b"")
+        if credential_epoch != tv.credential_epoch:
+            return
         if not isinstance(offered, bytes) or not hmac.compare_digest(offered, expected):
             tv.events.append({"pair": "bad_secret"})
             await reply(status=402)

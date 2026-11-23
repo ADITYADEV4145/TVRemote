@@ -22,6 +22,7 @@ class TV:
     code: str | None = None
     pending_codes: dict = field(default_factory=dict)
     credentials: dict = field(default_factory=dict)
+    credential_epoch: int = 0
     keys: deque = field(default_factory=lambda: deque(maxlen=64))
     events: deque = field(default_factory=lambda: deque(maxlen=256))
     connections: set = field(default_factory=set)

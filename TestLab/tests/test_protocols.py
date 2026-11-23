@@ -385,6 +385,37 @@ async def test_google_wrong_code_and_denied_approval(lab, tmp_path):
             await writer.wait_closed()
 
 
+async def test_google_revoke_during_delayed_pairing_secret(lab, tmp_path, monkeypatch):
+    tv = lab.tvs["google"]
+    client = google_client(lab, tmp_path)
+    await client.async_generate_cert_if_missing()
+    await client.async_start_pairing()
+    receiving_secret = asyncio.Event()
+    resume = asyncio.Event()
+    deliveries = tv.delivers
+
+    async def delayed_delivery():
+        receiving_secret.set()
+        await resume.wait()
+        return await deliveries()
+
+    monkeypatch.setattr(tv, "delivers", delayed_delivery)
+    finishing = asyncio.create_task(client.async_finish_pairing(tv.code))
+    try:
+        await asyncio.wait_for(receiving_secret.wait(), 2)
+        await lab.apply("google", {"action": "revoke"})
+        resume.set()
+        with pytest.raises(ConnectionClosed):
+            await finishing
+        await reached(lambda: not tv.pending_codes)
+        assert not tv.credentials
+        assert {"pair": "accepted"} not in tv.events
+    finally:
+        resume.set()
+        client.disconnect()
+        await asyncio.gather(finishing, return_exceptions=True)
+
+
 async def test_short_soak(tmp_path):
     result = await run(3, .15, tmp_path / "report", chaos_every=1)
     summary = result["summary"]
