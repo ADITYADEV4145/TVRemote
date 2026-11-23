@@ -231,7 +231,7 @@ struct UpgradeScreen: View {
             ScreenHeading("", title, "Your basic remote stays free.")
             if phase == .offer {
                 HeroCard(icon: "sparkles", title: "More, when you want it.",
-                         detail: "Multiple TVs, advanced voice and scenes are product directions, not purchasable features in this build.")
+                         detail: "Saving and switching between TVs is free. Plus cannot be purchased in this build.")
                 Panel {
                     Text("Illustrative plans").font(.headline)
                     plan("Yearly", "$14.99 / year", "Eligible 7-day trial shown only with StoreKit eligibility")
