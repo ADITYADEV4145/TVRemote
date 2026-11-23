@@ -66,7 +66,7 @@ class TV:
             self.muted = not self.muted
         elif name in {"Home", "KEY_HOME", "HOME", "3"}:
             self.app = "home"
-        elif name in {"Power", "PowerOff", "KEY_POWER", "POWER", "26"}:
+        elif name in {"Power", "PowerOff", "KEY_POWER", "POWER"}:
             self.sleeping = True
         elif name in {"Play", "KEY_PLAY", "PLAY", "126"}:
             self.media = "play"

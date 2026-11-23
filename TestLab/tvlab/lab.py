@@ -88,12 +88,30 @@ class Lab:
             address = self.address("google", "remote")
             await self.bonjour.update(*address, self.tvs["google"].sleeping)
 
+    async def set_sleeping(self, name, sleeping, notify=None):
+        tv = self.tvs[name]
+        tv.sleeping = sleeping
+        try:
+            if notify:
+                await notify()
+        finally:
+            if sleeping:
+                await tv.disconnect()
+            if name == "google":
+                await self.update_bonjour()
+
+    async def power_off_google(self, notify):
+        async with self.lock:
+            if not self.tvs["google"].sleeping:
+                await self.set_sleeping("google", True, notify)
+
     async def start_tv(self, name):
         bind, advertise, ports = self.bindings[name]
         tv = self.tvs[name]
         for scheme, requested in ports.items():
             if name == "google":
-                server = await android.serve(tv, bind, requested, scheme, self.cert, self.key)
+                server = await android.serve(tv, bind, requested, scheme, self.cert, self.key,
+                                             self.power_off_google)
                 port = server.sockets[0].getsockname()[1]
 
                 async def stop(server=server):
@@ -154,11 +172,7 @@ class Lab:
         tv = self.tvs[name]
         action = payload["action"]
         if action in ("sleep", "wake"):
-            tv.sleeping = action == "sleep"
-            if tv.sleeping:
-                await tv.disconnect()
-            if name == "google":
-                await self.update_bonjour()
+            await self.set_sleeping(name, action == "sleep")
         elif action == "drop":
             await tv.disconnect()
         elif action == "revoke":

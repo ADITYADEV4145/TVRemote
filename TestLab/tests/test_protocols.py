@@ -320,8 +320,17 @@ async def test_google_reference_pair_launch_ime_keepalive_and_revoke(lab, tmp_pa
         await reached(lambda: tv.held == {"19"})
         client.send_key_command("DPAD_UP", "END_LONG")
         await reached(lambda: not tv.held)
-        client.send_key_command(power)
-        await reached(lambda: tv.sleeping)
+        observer = google_client(lab, tmp_path)
+        try:
+            await observer.async_connect()
+            assert lab.bonjour.info is not None
+            client.send_key_command(power)
+            await reached(lambda: tv.sleeping and lab.bonjour.info is None and not tv.connections)
+            async with AsyncZeroconf(interfaces=[lab.host], ip_version=IPVersion.V4Only) as zc:
+                info = AsyncServiceInfo(lab.bonjour.service_type, lab.bonjour.name)
+                assert not await info.async_request(zc.zeroconf, 500)
+        finally:
+            observer.disconnect()
     finally:
         client.disconnect()
 

@@ -214,7 +214,7 @@ async def pair(tv, link, client, server):
         tv.code = next(reversed(tv.pending_codes.values()), None)
 
 
-async def control(tv, link):
+async def control(tv, link, power_off):
     async def send(tag, *values):
         await link.send(wire((tag, wire(*values))))
 
@@ -271,8 +271,8 @@ async def control(tv, link):
                     await volume()
                 if code == 3:
                     await foreground()
-                if tv.sleeping:
-                    await send(40, (1, 0))
+                if code == 26 and direction != 2:
+                    await power_off(lambda: send(40, (1, 0)))
                     return
             else:
                 await send(3, (1, 1))
@@ -288,7 +288,7 @@ async def control(tv, link):
                 await foreground()
 
 
-async def serve(tv, host, port, scheme, cert, key):
+async def serve(tv, host, port, scheme, cert, key, power_off):
     context = SSL.Context(SSL.TLS_SERVER_METHOD)
     context.set_min_proto_version(SSL.TLS1_2_VERSION)
     context.use_certificate(cert)
@@ -310,7 +310,7 @@ async def serve(tv, host, port, scheme, cert, key):
             if scheme == "pair":
                 await asyncio.wait_for(pair(tv, link, client, cert), 120)
             elif client.fingerprint(hashes.SHA256()) in tv.credentials:
-                await control(tv, link)
+                await control(tv, link, power_off)
             else:
                 tv.events.append({"control": "unpaired_certificate"})
         except (SSL.Error, EOFError, OSError, TimeoutError, KeyError, TypeError, ValueError) as exc:
