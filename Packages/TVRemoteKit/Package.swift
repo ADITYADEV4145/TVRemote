@@ -9,7 +9,9 @@ let package = Package(
         .target(name: "TVRemoteCore"),
         .target(name: "RokuDriver", dependencies: ["TVRemoteCore"]),
         .target(name: "GoogleTVDriver", dependencies: ["TVRemoteCore"]),
-        .target(name: "TVRemoteKit", dependencies: ["TVRemoteCore", "RokuDriver", "GoogleTVDriver"]),
+        .target(name: "SamsungDriver", dependencies: ["TVRemoteCore"]),
+        .target(name: "LGDriver", dependencies: ["TVRemoteCore"]),
+        .target(name: "TVRemoteKit", dependencies: ["TVRemoteCore", "RokuDriver", "GoogleTVDriver", "SamsungDriver", "LGDriver"]),
         .testTarget(name: "TVRemoteKitTests", dependencies: ["TVRemoteKit"])
     ]
 )
