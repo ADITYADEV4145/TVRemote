@@ -62,7 +62,6 @@ final class SimulatedTVTests: XCTestCase {
                 XCTAssertTrue(retry.isEnabled)
                 XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
                 retry.tap()
-                enterAddress(port, in: app)
                 assertApprovalPending(in: app, retry: retry)
             }
             capture("\(brand)-approval")

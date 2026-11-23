@@ -33,10 +33,12 @@ private actor LiveFixtureDriver: TVDriver {
     private let release = AsyncStream<Void>.makeStream()
     private var holdFirstSend = false
     private var channelAvailable = true
+    private var shouldTimeOutApproval = false
 
     func goOffline() { online = false }
     func goOnline() { online = true }
     func disableChannel() { channelAvailable = false }
+    func timeOutNextApproval() { shouldTimeOutApproval = true }
     func holdNextSend() { holdFirstSend = true }
     func waitForSend() async { for await _ in firstSend.stream { break } }
     func releaseSend() { release.continuation.finish() }
@@ -50,7 +52,14 @@ private actor LiveFixtureDriver: TVDriver {
         guard let probeDevice, probeDevice.endpoint == endpoint else { throw TVError.unreachable }
         return probeDevice
     }
-    func pair(_ tv: TVRemoteCore.TVDevice, prompt: PairingPromptHandler) async throws -> Credential { .token("paired") }
+    func pair(_ tv: TVRemoteCore.TVDevice, prompt: PairingPromptHandler) async throws -> Credential {
+        if shouldTimeOutApproval {
+            shouldTimeOutApproval = false
+            _ = try await prompt(.approveOnTV)
+            throw TVError.timedOut
+        }
+        return .token("paired")
+    }
     func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws { try requireOnline() }
     func send(_ key: TVRemoteCore.RemoteKey) async throws {
         try requireOnline()
@@ -387,6 +396,22 @@ final class ConnectionManagerTests: XCTestCase {
         await third.value
         let keys = await driver.keys
         XCTAssertEqual(keys, [.volumeUp, .left, .volumeDown])
+    }
+
+    func testLGApprovalTimeoutRetriesTheSameTV() async throws {
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
+        await driver.timeOutNextApproval()
+        let selected = session.remember(device)
+        _ = await connection.select(selected)
+        for _ in 0..<100 where connection.isConnecting { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(connection.pairingPrompt, .approval)
+        XCTAssertEqual(connection.pairingDevice, selected)
+        XCTAssertNotNil(connection.error)
+        connection.retryTVApproval()
+        for _ in 0..<100 where connection.isConnecting { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(connection.currentDevice, selected)
+        XCTAssertEqual(connection.pairingCompletion, 1)
+        XCTAssertNil(connection.error)
     }
 
     func testAutomaticPairingPublishesSetupCompletionWithoutPrompt() async throws {

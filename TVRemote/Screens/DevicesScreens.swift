@@ -54,7 +54,10 @@ struct SetupScreen: View {
                 Button("Open remote", action: connected).buttonStyle(PrimaryActionStyle())
                 SupportingCopy(title: "No payment needed", detail: "Power, supported navigation, volume and recovery stay free.")
             default:
-                SetupStatusContent(page: page, retry: { connection.cancelPairing(); page = .discovery },
+                SetupStatusContent(page: page, retry: {
+                    if page == .approval { connection.retryTVApproval() }
+                    else { connection.cancelPairing(); page = .discovery }
+                },
                                    manual: { page = .manual },
                                    retryDisabled: page == .approval && connection.awaitingTVApproval)
             }

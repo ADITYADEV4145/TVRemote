@@ -321,6 +321,12 @@ final class RemoteViewModel {
         startPairing(device, selected: selected, using: live)
     }
 
+    func retryTVApproval() {
+        guard !isConnecting, pairingPrompt == .approval, let live, let device = pairingDevice,
+              let selected = live.device(device.id) else { return }
+        startPairing(device, selected: selected, using: live, initialPrompt: .approval)
+    }
+
     func forget(_ device: TVDevice) async {
         keyboardDrafts.removeValue(forKey: device.id)
         guard !isConnecting else { return }
@@ -497,11 +503,11 @@ final class RemoteViewModel {
     }
 
     private func startPairing(_ device: TVDevice, selected: LiveTVSession.Device,
-                              using live: LiveTVSession, message: String? = nil) {
+                              using live: LiveTVSession, message: String? = nil, initialPrompt: SetupPairing? = nil) {
         let attempt = UUID()
         pairingAttempt = attempt
         isConnecting = true
-        pairingPrompt = nil
+        pairingPrompt = initialPrompt
         error = message
         pairingTask = Task { [weak self] in
             do {
