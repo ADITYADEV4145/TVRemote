@@ -62,16 +62,19 @@ struct ScreenBody<Content: View>: View {
 /// Keeps primary actions out of scrolling content and above the native tab bar.
 /// The system supplies the bar's inset; no device-specific bar height is assumed.
 struct ScreenActions<Actions: View>: ViewModifier {
+    var isPresented = true
     @ViewBuilder var actions: Actions
 
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 8) { actions }
-                .padding(.horizontal, RemoteTheme.gutter)
-                .padding(.vertical, 12)
-                .frame(maxWidth: 560)
-                .frame(maxWidth: .infinity)
-                .background(RemoteTheme.canvas)
+            if isPresented {
+                VStack(spacing: 8) { actions }
+                    .padding(.horizontal, RemoteTheme.gutter)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                    .background(RemoteTheme.canvas)
+            }
         }
     }
 }
@@ -111,34 +114,80 @@ struct Panel<Content: View>: View {
 }
 
 struct DetailRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let icon: String
     let title: String
     let detail: String
     var trailing: String? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.body.weight(.semibold))
-                .frame(width: 38, height: 38)
-                .background(RemoteTheme.key, in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(RemoteTheme.accent)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline).foregroundStyle(RemoteTheme.ink)
-                Text(detail).font(RemoteTheme.metadata).foregroundStyle(RemoteTheme.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            if let trailing {
-                Image(systemName: trailing)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(RemoteTheme.accent)
-                    .accessibilityHidden(true)
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack { iconView; Spacer(); accessory }
+                    labels
+                }
+            } else {
+                HStack(spacing: 12) {
+                    iconView
+                    labels
+                    accessory
+                }
             }
         }
-        .frame(minHeight: RemoteTheme.target)
+        .frame(maxWidth: .infinity, minHeight: RemoteTheme.target, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+
+    private var iconView: some View {
+        Image(systemName: icon)
+            // Decorative symbols must stay inside their tile even at AX5.
+            .font(.system(size: 18, weight: .semibold))
+            .frame(width: 38, height: 38)
+            .background(RemoteTheme.key, in: RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(RemoteTheme.accent)
+            .accessibilityHidden(true)
+    }
+
+    private var labels: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.headline).foregroundStyle(RemoteTheme.ink)
+            Text(detail).font(RemoteTheme.metadata).foregroundStyle(RemoteTheme.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var accessory: some View {
+        if let trailing {
+            Image(systemName: trailing)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(RemoteTheme.accent)
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+/// At accessibility sizes a switch must not compete with its label for width.
+struct SettingsToggle: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let icon: String
+    let title: String
+    let detail: String
+    @Binding var isOn: Bool
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                DetailRow(icon: icon, title: title, detail: detail).accessibilityHidden(true)
+                Toggle(title, isOn: $isOn).labelsHidden()
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .accessibilityHint(detail)
+            }
+        } else {
+            Toggle(isOn: $isOn) { DetailRow(icon: icon, title: title, detail: detail) }
+        }
     }
 }
 

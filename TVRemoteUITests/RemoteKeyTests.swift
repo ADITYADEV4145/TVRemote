@@ -39,7 +39,8 @@ final class RemoteKeyTests: XCTestCase {
         XCTAssertTrue(app.buttons["Open remote"].waitForExistence(timeout: 5))
         app.buttons["Open remote"].tap()
         app.buttons["Touchpad"].coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
-        XCTAssertTrue(app.staticTexts["Swipe to move"].waitForExistence(timeout: 5))
+        // The decorative gesture surface is intentionally hidden from VoiceOver.
+        XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5))
         app.buttons["Buttons"].coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
         XCTAssertTrue(app.buttons["OK"].waitForExistence(timeout: 5))
     }
