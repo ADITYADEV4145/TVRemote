@@ -51,6 +51,17 @@
                ReferencedContainer = "container:TVRemote.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "210B9486BDBFCF367F0AC783"
+               BuildableName = "TVRemoteUITests.xctest"
+               BlueprintName = "TVRemoteUITests"
+               ReferencedContainer = "container:TVRemote.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

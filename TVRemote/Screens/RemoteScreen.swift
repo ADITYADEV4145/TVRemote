@@ -77,11 +77,10 @@ struct RemoteScreen: View {
             GridRow {
                 control("Left", "chevron.left", .left)
                 Button("OK") { press(.select) }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 62)
-                    .background(RemoteTheme.accent, in: RoundedRectangle(cornerRadius: 15))
-                    .foregroundStyle(RemoteTheme.onAccent)
-                    .buttonStyle(KeyPressStyle())
+                    .buttonStyle(KeyPressStyle(
+                        fill: RemoteTheme.accent, tint: RemoteTheme.onAccent,
+                        height: 62, radius: 15, font: .headline
+                    ))
                     .disabled(!connection.canControl)
                 control("Right", "chevron.right", .right)
             }
@@ -139,11 +138,7 @@ struct RemoteScreen: View {
     private func control(_ title: String, _ icon: String, _ key: RemoteKey, enabled: Bool? = nil) -> some View {
         Button(title, systemImage: icon) { press(key) }
             .labelStyle(.iconOnly)
-            .font(.body.weight(.semibold))
-            .frame(maxWidth: .infinity, minHeight: RemoteTheme.target)
-            .foregroundStyle(key == .power ? RemoteTheme.warning : RemoteTheme.ink)
-            .background(RemoteTheme.key, in: RoundedRectangle(cornerRadius: 14))
-            .buttonStyle(KeyPressStyle())
+            .buttonStyle(KeyPressStyle(tint: key == .power ? RemoteTheme.warning : RemoteTheme.ink))
             .disabled(!(enabled ?? connection.canControl))
     }
 
@@ -155,10 +150,20 @@ struct RemoteScreen: View {
 
 private struct KeyPressStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
+    var fill = RemoteTheme.key
+    var tint = RemoteTheme.ink
+    var height = RemoteTheme.target
+    var radius: CGFloat = 14
+    var font = Font.body.weight(.semibold)
 
     func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: radius)
         configuration.label
-            .contentShape(Rectangle())
+            .font(font)
+            .frame(maxWidth: .infinity, minHeight: height)
+            .foregroundStyle(tint)
+            .background(fill, in: shape)
+            .contentShape(shape)
             .opacity(isEnabled ? (configuration.isPressed ? 0.64 : 1) : 0.42)
     }
 }

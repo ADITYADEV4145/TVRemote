@@ -12,6 +12,7 @@
 		4F6F27EB18FD9B0FF713D7AB /* TVRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94A46E339FC62F654E112631 /* TVRemoteApp.swift */; };
 		54D8554664CDF821A96FD72F /* ConnectionManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DF80EADBFD373703DACE061 /* ConnectionManagerTests.swift */; };
 		5D1716ABD446EA3DD9F2614B /* ConnectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512DD9A98E0DCE2E25C57EDC /* ConnectionManager.swift */; };
+		69392896BE5AE8D626D8F566 /* RemoteKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D124211F960743AC6CF15AE /* RemoteKeyTests.swift */; };
 		94165F5916837430274A2547 /* ToolScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 559538118F0103D3EB51FF8C /* ToolScreens.swift */; };
 		98237A5BEF3427475980EFAF /* SettingsScreens.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7E598D47F89204216C922CB /* SettingsScreens.swift */; };
 		9AE43B861FFB1865BD4722B1 /* TVDriverKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 9BF938EC439F64BFDCE9A827 /* TVDriverKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -23,6 +24,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		3AF5E5FF7ED5B295BFF8F9C6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C6A84324EF563986EB3FF478 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CEB2E52F8C745D1CCEDABF57;
+			remoteInfo = TVRemote;
+		};
 		4931EA00D4FB14581894A053 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = C6A84324EF563986EB3FF478 /* Project object */;
@@ -62,10 +70,12 @@
 		512DD9A98E0DCE2E25C57EDC /* ConnectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionManager.swift; sourceTree = "<group>"; };
 		559538118F0103D3EB51FF8C /* ToolScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolScreens.swift; sourceTree = "<group>"; };
 		5CAB051615A264DE7FB4EDF5 /* RootScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootScreen.swift; sourceTree = "<group>"; };
+		5DD7076CE180B6B783355527 /* TVRemoteUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TVRemoteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6096A417AF580F57F51C78DB /* RemoteScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteScreen.swift; sourceTree = "<group>"; };
 		94A46E339FC62F654E112631 /* TVRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVRemoteApp.swift; sourceTree = "<group>"; };
 		989FC541AF0D7B5FCD7E5A94 /* MockTVDriver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTVDriver.swift; sourceTree = "<group>"; };
 		9BF938EC439F64BFDCE9A827 /* TVDriverKit.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = TVDriverKit.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		9D124211F960743AC6CF15AE /* RemoteKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteKeyTests.swift; sourceTree = "<group>"; };
 		E7E598D47F89204216C922CB /* SettingsScreens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreens.swift; sourceTree = "<group>"; };
 		EE84364781CFB243708784AB /* RemoteTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTheme.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -99,6 +109,7 @@
 				9BF938EC439F64BFDCE9A827 /* TVDriverKit.framework */,
 				4A925A32C00EA5E0EA005803 /* TVRemote.app */,
 				2ABF9279ED1D1F2B66317888 /* TVRemoteTests.xctest */,
+				5DD7076CE180B6B783355527 /* TVRemoteUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -109,6 +120,7 @@
 				EB54E030BE2BD35C54DF7CF6 /* TVDriverKit */,
 				094975E68A6DDA2334570010 /* TVRemote */,
 				F68E74B972A614CF6021A248 /* TVRemoteTests */,
+				9C84B0C296321CF583954371 /* TVRemoteUITests */,
 				809CE646BA20C16430D38ACF /* Products */,
 			);
 			sourceTree = "<group>";
@@ -123,6 +135,14 @@
 				559538118F0103D3EB51FF8C /* ToolScreens.swift */,
 			);
 			path = Screens;
+			sourceTree = "<group>";
+		};
+		9C84B0C296321CF583954371 /* TVRemoteUITests */ = {
+			isa = PBXGroup;
+			children = (
+				9D124211F960743AC6CF15AE /* RemoteKeyTests.swift */,
+			);
+			path = TVRemoteUITests;
 			sourceTree = "<group>";
 		};
 		A6A8899E6C9405C54BA12D74 /* State */ = {
@@ -161,6 +181,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		210B9486BDBFCF367F0AC783 /* TVRemoteUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 06FD6C9BC9FEC2AA99D999DC /* Build configuration list for PBXNativeTarget "TVRemoteUITests" */;
+			buildPhases = (
+				62DEED8E9C0948C846D8455D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				285D9BFB66AFF8B246197873 /* PBXTargetDependency */,
+			);
+			name = TVRemoteUITests;
+			packageProductDependencies = (
+			);
+			productName = TVRemoteUITests;
+			productReference = 5DD7076CE180B6B783355527 /* TVRemoteUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		2638FDB09626567EDDCA16BD /* TVRemoteTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 3D822561BF40DB68F792CF8D /* Build configuration list for PBXNativeTarget "TVRemoteTests" */;
@@ -225,6 +263,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1600;
 				TargetAttributes = {
+					210B9486BDBFCF367F0AC783 = {
+						TestTargetID = CEB2E52F8C745D1CCEDABF57;
+					};
 				};
 			};
 			buildConfigurationList = 1098F52F99DFD1D4F063ADC9 /* Build configuration list for PBXProject "TVRemote" */;
@@ -244,6 +285,7 @@
 				3C29450931A9F4F900221547 /* TVDriverKit */,
 				CEB2E52F8C745D1CCEDABF57 /* TVRemote */,
 				2638FDB09626567EDDCA16BD /* TVRemoteTests */,
+				210B9486BDBFCF367F0AC783 /* TVRemoteUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -273,6 +315,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		62DEED8E9C0948C846D8455D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				69392896BE5AE8D626D8F566 /* RemoteKeyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A017AF3324C3F37F350040D9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -284,6 +334,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		285D9BFB66AFF8B246197873 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CEB2E52F8C745D1CCEDABF57 /* TVRemote */;
+			targetProxy = 3AF5E5FF7ED5B295BFF8F9C6 /* PBXContainerItemProxy */;
+		};
 		302E14866402340A0F119DDA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 3C29450931A9F4F900221547 /* TVDriverKit */;
@@ -423,6 +478,40 @@
 			};
 			name = Debug;
 		};
+		6050FD4611D84E0D38BE1726 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adityapunjani.TVRemote.UITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TVRemote;
+			};
+			name = Debug;
+		};
+		D17A6565B2018A41B88B99B8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.adityapunjani.TVRemote.UITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = TVRemote;
+			};
+			name = Release;
+		};
 		D9912C9857B7B35A967A9B60 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -545,6 +634,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		06FD6C9BC9FEC2AA99D999DC /* Build configuration list for PBXNativeTarget "TVRemoteUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6050FD4611D84E0D38BE1726 /* Debug */,
+				D17A6565B2018A41B88B99B8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		1098F52F99DFD1D4F063ADC9 /* Build configuration list for PBXProject "TVRemote" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
