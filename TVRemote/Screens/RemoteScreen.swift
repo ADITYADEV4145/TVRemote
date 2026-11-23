@@ -29,14 +29,8 @@ struct RemoteScreen: View {
                 utility("Keyboard", "keyboard") { open(.keyboard) }
             }
             .padding(.horizontal, large ? 0 : 24)
-            Picker("Remote mode", selection: $touchpad) {
-                Text("Buttons").tag(false)
-                Text("Touchpad").tag(true)
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: large ? .infinity : 252, minHeight: 44)
-            .frame(maxWidth: .infinity)
-            if touchpad {
+            modePicker
+            if touchpad && connection.supportsPointer {
                 PointerSurface()
             } else {
                 DirectionDisc(large: large, enabled: connection.canControl, press: press)
@@ -56,13 +50,52 @@ struct RemoteScreen: View {
                     rocker("Channel", up: .channelUp, down: .channelDown)
                 }
             }
+            ConnectionMessage()
+        }
+        .modifier(ScreenActions {
             Button("Talk to your TV") { open(.voice) }.buttonStyle(PrimaryActionStyle())
             if connection.currentDevice == nil {
                 Button("Find a TV") { open(.setup) }.buttonStyle(SecondaryActionStyle())
             }
-            ConnectionMessage()
+        })
+        .onChange(of: connection.currentDevice?.id) { touchpad = false }
+        .onChange(of: connection.supportsPointer) {
+            if !connection.supportsPointer { touchpad = false }
         }
         .sensoryFeedback(.selection, trigger: haptic)
+    }
+
+    private var modePicker: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 2) {
+                modeButton("Buttons", selected: !touchpad || !connection.supportsPointer) { touchpad = false }
+                modeButton("Touchpad", selected: touchpad && connection.supportsPointer) { touchpad = true }
+                    .disabled(!connection.supportsPointer)
+                    .accessibilityHint(connection.supportsPointer ? "Swipe to move the TV pointer." : "Not supported by this TV or connection. Use Buttons.")
+            }
+            .padding(3)
+            .background(RemoteTheme.raised, in: Capsule())
+            .frame(maxWidth: large ? .infinity : 280)
+            .frame(maxWidth: .infinity)
+            if !connection.supportsPointer {
+                Text("Touchpad isn’t supported on this connection.")
+                    .font(.footnote).foregroundStyle(RemoteTheme.muted)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Remote mode")
+    }
+
+    private func modeButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(selected ? RemoteTheme.surface : .clear, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(RemoteTheme.text)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var navigationKeys: some View {

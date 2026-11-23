@@ -218,9 +218,12 @@ struct SupportPreviewScreen: View {
                     .font(.subheadline).foregroundStyle(RemoteTheme.muted)
             }
             Panel { Text(report).font(.footnote.monospaced()).textSelection(.enabled) }
+        }
+        .modifier(ScreenActions {
             ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
                 .buttonStyle(PrimaryActionStyle())
-        }.modifier(TaskSurface())
+        })
+        .modifier(TaskSurface())
     }
 }
 

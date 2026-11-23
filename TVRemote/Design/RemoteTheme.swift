@@ -51,8 +51,28 @@ struct ScreenBody<Content: View>: View {
                 .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
+        // ScrollView normally draws through its safe-area edges. These screens
+        // hide the navigation bar, so there is no bar to cover the status area.
+        .clipped()
         .background(RemoteTheme.canvas.ignoresSafeArea())
         .foregroundStyle(RemoteTheme.ink)
+    }
+}
+
+/// Keeps primary actions out of scrolling content and above the native tab bar.
+/// The system supplies the bar's inset; no device-specific bar height is assumed.
+struct ScreenActions<Actions: View>: ViewModifier {
+    @ViewBuilder var actions: Actions
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 8) { actions }
+                .padding(.horizontal, RemoteTheme.gutter)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                .background(RemoteTheme.canvas)
+        }
     }
 }
 

@@ -256,9 +256,11 @@ struct DevicesScreen: View {
                 }
                     .buttonStyle(PrimaryActionStyle())
             }
-            Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
             ConnectionMessage()
         }
+        .modifier(ScreenActions {
+            Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
+        })
         .onChange(of: connection.pairingCompletion) { connected() }
     }
 }

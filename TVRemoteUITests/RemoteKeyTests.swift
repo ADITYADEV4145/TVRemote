@@ -1,6 +1,38 @@
 import XCTest
 
 final class RemoteKeyTests: XCTestCase {
+    func testPrimaryActionsClearTheTabBar() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Close"].tap()
+        assertAboveTabBar(app.buttons["Talk to your TV"], in: app)
+        assertAboveTabBar(app.buttons["Find a TV"], in: app)
+        app.tabBars.buttons["My TVs"].tap()
+        assertAboveTabBar(app.buttons["Add a TV"], in: app)
+    }
+
+    func testUnsupportedTouchpadKeepsDirectionalControls() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Find my TV"].tap()
+        app.buttons["Find TVs"].tap()
+        select("Living Room", in: app)
+        app.buttons["Open remote"].tap()
+        XCTAssertTrue(app.buttons["Touchpad"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Touchpad"].isEnabled)
+        XCTAssertTrue(app.buttons["OK"].isEnabled)
+        XCTAssertTrue(app.buttons["Up"].isEnabled)
+        XCTAssertFalse(app.staticTexts["Keep using Buttons"].exists)
+    }
+
+    private func assertAboveTabBar(_ button: XCUIElement, in app: XCUIApplication,
+                                   file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(button.waitForExistence(timeout: 5), file: file, line: line)
+        XCTAssertTrue(button.isHittable, file: file, line: line)
+        XCTAssertLessThanOrEqual(button.frame.maxY, app.tabBars.firstMatch.frame.minY,
+                                 "The entire action must remain above the floating tab bar.", file: file, line: line)
+    }
+
     func testDiscoveryBackReturnsToNetworkThenWelcome() {
         continueAfterFailure = false
         let app = launchSetup()
