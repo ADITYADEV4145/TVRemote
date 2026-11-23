@@ -26,7 +26,7 @@ final class RokuECPExecutor: VoiceCommandExecutor {
             switch action {
             case let .up(n): for _ in 0..<n { try await post("keypress/VolumeUp") }
             case let .down(n): for _ in 0..<n { try await post("keypress/VolumeDown") }
-            case .mute, .unmute: try await post("keypress/VolumeMute")
+            case .mute, .unmute: throw Unsupported(description: "Roku ECP has only a mute toggle, so it cannot set mute on or off")
             case .set: throw Unsupported(description: "Roku has no absolute volume")
             }
         case let .power(action):
@@ -36,7 +36,7 @@ final class RokuECPExecutor: VoiceCommandExecutor {
             case let .number(n): try await post("launch/tvinput.dtv?ch=\(n)")
             case .up: try await post("keypress/ChannelUp")
             case .down: try await post("keypress/ChannelDown")
-            case .previous: try await post("keypress/InstantReplay")
+            case .previous: throw Unsupported(description: "Roku ECP has no previous-channel key")
             }
         case let .launch(app):
             guard let id = Self.appIDs[app] else { throw Unsupported(description: "no Roku ID for \(app)") }
@@ -68,14 +68,13 @@ final class RokuECPExecutor: VoiceCommandExecutor {
         case .left: return "Left"
         case .right: return "Right"
         case .select: return "Select"
-        case .menu, .settings: return "Info"
-        case .info: return "Info"
+        case .menu, .info: return "Info"
         case .search: return "Search"
-        case .play, .pause, .playPause, .stop: return "Play"
+        case .play, .pause, .playPause: return "Play"
         case .rewind: return "Rev"
-        case .fastForward, .next: return "Fwd"
-        case .previous, .replay: return "InstantReplay"
-        case .captions: throw Unsupported(description: "Roku ECP has no captions key")
+        case .fastForward: return "Fwd"
+        case .replay: return "InstantReplay"
+        case .settings, .stop, .next, .previous, .captions: throw Unsupported(description: "Roku ECP has no \(key) key")
         }
     }
 
