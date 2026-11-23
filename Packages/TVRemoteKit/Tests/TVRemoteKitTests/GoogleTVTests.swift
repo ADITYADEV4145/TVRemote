@@ -341,6 +341,16 @@ private func makeDriver(
     #expect(await remote.writes == initialRemoteWrites + [hex("15 aa0112 08071009 1a0c08011208080210021a024869")])
 }
 
+@Test func googleTVUsesUpdatedIMEBatchEditCounters() async throws {
+    let context = hex("0b a20108 0a020807 12020809")
+    let edit = hex("07 aa0104 080b100d")
+    let remote = TranscriptTLSStream(remoteReady.dropLast(6) + context + edit + remoteReady.suffix(6))
+    let session = GoogleTVRemoteSession(wire: GoogleTVWire(stream: remote))
+    try await session.start()
+    try await session.sendText("Hi")
+    #expect(await remote.writes == initialRemoteWrites + [hex("15 aa0112 080b100d 1a0c08011208080210021a024869")])
+}
+
 @Test func googleTVRejectsOversizedFramesBeforePrompting() async throws {
     let pair = TranscriptTLSStream(hex("818004"))
     let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair)])

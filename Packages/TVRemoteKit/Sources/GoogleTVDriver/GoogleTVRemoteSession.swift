@@ -122,8 +122,8 @@ actor GoogleTVRemoteSession {
         } else if let show = try message.message(22) {
             fieldCounter = try show.message(2)?.number(1)
         } else if let edit = try message.message(21) {
-            if imeCounter == nil { imeCounter = edit.number(1) }
-            if fieldCounter == nil { fieldCounter = edit.number(2) }
+            if let counter = edit.number(1) { imeCounter = counter }
+            if let counter = edit.number(2) { fieldCounter = counter }
         }
     }
 
