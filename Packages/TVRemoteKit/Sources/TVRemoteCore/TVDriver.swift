@@ -37,6 +37,7 @@ public struct TVCapabilities: OptionSet, Sendable, Hashable, Codable {
     public static let keyboard = Self(rawValue: 1 << 3)
     public static let networkWake = Self(rawValue: 1 << 4)
     public static let pointer = Self(rawValue: 1 << 5)
+    public static let controlWake = Self(rawValue: 1 << 6)
 }
 
 public struct TVDevice: Sendable, Hashable, Codable, Identifiable {

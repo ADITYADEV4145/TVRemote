@@ -75,8 +75,8 @@ final class RemoteViewModel {
     private var canWake: Bool {
         guard let device = currentDevice else { return false }
         if live == nil { return state == .asleep }
-        return (state == .asleep || state == .degraded)
-            && live?.device(device.id)?.capabilities.contains(.networkWake) == true
+        guard state == .asleep || state == .degraded else { return false }
+        return live?.device(device.id)?.capabilities.intersection([.networkWake, .controlWake]).isEmpty == false
     }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
     var supportsManualAddress: Bool { true }
@@ -244,8 +244,15 @@ final class RemoteViewModel {
     func send(_ key: RemoteKey) async {
         if key == .power, canWake, !isConnecting, let device = currentDevice {
             await perform("Wake TV", feedback: "Waking \(device.name)") { [self] in
-                if let live { try await live.manager.wake() }
-                else { try await driver?.wake(device) }
+                if let live {
+                    if live.device(device.id)?.capabilities.contains(.controlWake) == true {
+                        try await live.manager.send(.powerOn)
+                    } else {
+                        try await live.manager.wake()
+                    }
+                } else {
+                    try await driver?.wake(device)
+                }
             }
         } else if canControl {
             await perform(key.commandTitle) { [self] in

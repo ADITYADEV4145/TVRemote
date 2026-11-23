@@ -224,6 +224,27 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(keys, [.volumeUp])
     }
 
+    func testPowerSendsWakeKeyAfterGoogleTVControlReconnects() async throws {
+        let (connection, session, device, driver) = try await liveFixture(
+            platform: .googleTV, [.remoteKeys, .controlWake]
+        )
+        try await session.credentials.save(.token("paired"), for: device.id)
+        let connected = await connection.select(session.remember(device))
+        XCTAssertTrue(connected)
+        await driver.goOffline()
+        do {
+            try await session.manager.checkConnection()
+            XCTFail("The disconnected TV should not respond to a health check.")
+        } catch TVError.unreachable {}
+        await waitForState(.degraded, on: connection)
+        XCTAssertTrue(connection.canPower)
+        await driver.goOnline()
+        await connection.send(.power)
+        await waitForState(.ready, on: connection)
+        let keys = await driver.keys
+        XCTAssertEqual(keys, [.powerOn])
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)

@@ -57,7 +57,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
             id: identity(for: connection.peer),
             name: connection.deviceName ?? "Google TV",
             endpoint: TVEndpoint(host: endpoint.host, port: Self.controlPort),
-            capabilities: [.remoteKeys, .launch]
+            capabilities: [.remoteKeys, .launch, .controlWake]
         )
     }
 
