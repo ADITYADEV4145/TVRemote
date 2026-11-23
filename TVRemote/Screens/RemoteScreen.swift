@@ -4,166 +4,178 @@ import TVDriverKit
 struct RemoteScreen: View {
     @Environment(ConnectionManager.self) private var connection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage("largeControls") private var largeControls = false
+    @AppStorage("hapticsEnabled") private var haptics = true
     @State private var haptic = 0
+    @State private var touchpad = false
+    var forceLarge = false
     let open: (RootScreen.Tool) -> Void
 
+    init(touchpad: Bool = false, forceLarge: Bool = false, open: @escaping (RootScreen.Tool) -> Void) {
+        _touchpad = State(initialValue: touchpad)
+        self.forceLarge = forceLarge
+        self.open = open
+    }
+
+    private var large: Bool { forceLarge || largeControls || dynamicTypeSize.isAccessibilitySize }
+
     var body: some View {
-        ScreenBody {
-            ScreenHeading("TV REMOTE  /  01", "Remote")
-            devicePanel
-            Panel {
-                directionPad
-                HStack(spacing: 8) {
-                    control("Back", "arrow.uturn.backward", .back)
-                    control("Home", "house.fill", .home)
-                    control("Play or pause", "playpause.fill", .playPause)
-                }
+        ScreenBody(spacing: 8) {
+            header
+            HStack(alignment: .top) {
+                utility("Power", "power") { press(.power) }.disabled(!connection.canPower)
+                Spacer()
+                utility("Input", "rectangle.on.rectangle") { open(.inputs) }
+                Spacer()
+                utility("Keyboard", "keyboard") { open(.keyboard) }
             }
-            HStack(spacing: 10) {
-                rocker("Volume", up: .volumeUp, down: .volumeDown)
-                control("Mute", "speaker.slash.fill", .mute)
-                    .frame(maxWidth: 64)
-                rocker("Channel", up: .channelUp, down: .channelDown)
+            .padding(.horizontal, large ? 0 : 24)
+            Picker("Remote mode", selection: $touchpad) {
+                Text("Buttons").tag(false)
+                Text("Touchpad").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: large ? .infinity : 252, minHeight: 44)
+            .frame(maxWidth: .infinity)
+            if touchpad {
+                PointerSurface()
+            } else {
+                DirectionDisc(large: large, enabled: connection.canControl, press: press)
+                    .frame(maxWidth: .infinity)
             }
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { tools }
-                VStack(spacing: 10) { tools }
+                HStack(alignment: .top, spacing: 16) { navigationKeys }
+                VStack(spacing: 12) { navigationKeys }
             }
-            if connection.currentDevice != nil { ConnectionMessage() }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    rocker("Volume", up: .volumeUp, down: .volumeDown)
+                    rocker("Channel", up: .channelUp, down: .channelDown)
+                }
+                VStack(spacing: 8) {
+                    rocker("Volume", up: .volumeUp, down: .volumeDown)
+                    rocker("Channel", up: .channelUp, down: .channelDown)
+                }
+            }
+            Button("Talk to your TV") { open(.voice) }.buttonStyle(PrimaryActionStyle())
+            if connection.currentDevice == nil {
+                Button("Find a TV") { open(.setup) }.buttonStyle(SecondaryActionStyle())
+            }
+            ConnectionMessage()
         }
         .sensoryFeedback(.selection, trigger: haptic)
     }
 
-    private var devicePanel: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize && connection.currentDevice == nil
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
-            : AnyLayout(HStackLayout())
-        return Panel {
-            layout {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(connection.currentDevice?.name ?? "No TV selected")
-                        .font(.headline)
-                    Label(connection.isConnecting ? "Connecting" : connection.state.rawValue,
-                          systemImage: connection.canControl ? "checkmark.circle.fill" : "circle.dotted")
-                        .font(RemoteTheme.metadata)
-                        .foregroundStyle(connection.canControl ? RemoteTheme.healthy : RemoteTheme.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if connection.currentDevice != nil {
-                    control("Power", "power", .power, enabled: connection.canPower)
-                        .frame(width: 52)
-                } else {
-                    Button("Find a TV") { open(.setup) }
-                        .buttonStyle(PrimaryActionStyle())
-                        .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
-                }
-            }
-            if connection.isDemo {
-                Text("DEMO MODE").font(RemoteTheme.label).tracking(1.4)
-                    .foregroundStyle(RemoteTheme.secondary)
-                    .accessibilityLabel("Demo mode")
-            }
-        }
-    }
-
-    private var directionPad: some View {
-        Grid(horizontalSpacing: 7, verticalSpacing: 7) {
-            GridRow {
-                Color.clear.accessibilityHidden(true)
-                control("Up", "chevron.up", .up)
-                Color.clear.accessibilityHidden(true)
-            }
-            GridRow {
-                control("Left", "chevron.left", .left)
-                Button("OK") { press(.select) }
-                    .buttonStyle(KeyPressStyle(
-                        fill: RemoteTheme.accent, tint: RemoteTheme.onAccent,
-                        height: 62, radius: 15, font: .headline
-                    ))
-                    .disabled(!connection.canControl)
-                control("Right", "chevron.right", .right)
-            }
-            GridRow {
-                Color.clear.accessibilityHidden(true)
-                control("Down", "chevron.down", .down)
-                Color.clear.accessibilityHidden(true)
-            }
-        }
-        .frame(maxWidth: 294)
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .simultaneousGesture(DragGesture(minimumDistance: 28).onEnded { gesture in
-            guard connection.canControl else { return }
-            let delta = gesture.translation
-            if abs(delta.width) > abs(delta.height) {
-                press(delta.width < 0 ? .left : .right)
-            } else {
-                press(delta.height < 0 ? .up : .down)
-            }
-        })
-    }
-
-    private func rocker(_ name: String, up: RemoteKey, down: RemoteKey) -> some View {
-        VStack(spacing: 1) {
-            control("\(name) up", "plus", up)
-            Text(name).font(.caption.weight(.semibold)).foregroundStyle(RemoteTheme.secondary)
-                .accessibilityHidden(true)
-            control("\(name) down", "minus", down)
-        }
-        .padding(5)
-        .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private var tools: some View {
+    private var navigationKeys: some View {
         Group {
-            Button { open(.voice) } label: {
-                Label("Voice", systemImage: "mic.fill")
+            utility("Back", "arrow.uturn.backward") { press(.back) }
+            Spacer(minLength: 0)
+            utility("Home", "house") { press(.home) }
+            Spacer(minLength: 0)
+            utility("Play/pause", "play") { press(.playPause) }
+            Spacer(minLength: 0)
+            utility("Mute", "speaker.slash") { press(.mute) }
+        }
+        .disabled(!connection.canControl)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(connection.currentDevice?.name ?? "Your TV remote")
+                .font(RemoteTheme.title).accessibilityAddTraits(.isHeader)
+            HStack {
+                Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
+                    .foregroundStyle(RemoteTheme.muted)
+                    .accessibilityLiveRegion(.polite)
+                if connection.isDemo {
+                    Text("DEMO").font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(RemoteTheme.raised, in: Capsule())
+                }
+                Spacer()
+                if [.recovering, .degraded, .needsRepair, .asleep].contains(connection.state) {
+                    NavigationLink("Fix connection") { DiagnosticsScreen() }
+                        .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                }
             }
-            .buttonStyle(PrimaryActionStyle())
-            Button { open(.keyboard) } label: {
-                Label("Keyboard", systemImage: "keyboard")
-                    .frame(minHeight: RemoteTheme.target)
-            }
-            .buttonStyle(.bordered)
-            Button { open(.trackpad) } label: {
-                Label("Trackpad", systemImage: "hand.point.up.left")
-                    .labelStyle(.iconOnly)
-                    .frame(minWidth: RemoteTheme.target, minHeight: RemoteTheme.target)
-            }
-            .buttonStyle(.bordered)
+            .font(.subheadline)
+        }
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func utility(_ title: String, _ icon: String, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 4) {
+            Button(title, systemImage: icon, action: action)
+                .labelStyle(.iconOnly)
+                .buttonStyle(ControlKeyStyle(size: large ? 72 : 56))
+                .accessibilityIdentifier(title)
+            Text(title).font(.caption).foregroundStyle(RemoteTheme.muted)
+                .fixedSize(horizontal: false, vertical: true).accessibilityHidden(true)
         }
     }
 
-    private func control(_ title: String, _ icon: String, _ key: RemoteKey, enabled: Bool? = nil) -> some View {
-        Button(title, systemImage: icon) { press(key) }
-            .labelStyle(.iconOnly)
-            .buttonStyle(KeyPressStyle(tint: key == .power ? RemoteTheme.warning : RemoteTheme.ink))
-            .disabled(!(enabled ?? connection.canControl))
+    private func rocker(_ title: String, up: RemoteKey, down: RemoteKey) -> some View {
+        HStack(spacing: 0) {
+            Button("\(title) down", systemImage: "minus") { press(down) }
+                .labelStyle(.iconOnly).buttonStyle(ControlKeyStyle(clear: true))
+            Text(title).font(.subheadline).foregroundStyle(RemoteTheme.muted)
+                .frame(maxWidth: .infinity).accessibilityHidden(true)
+            Button("\(title) up", systemImage: "plus") { press(up) }
+                .labelStyle(.iconOnly).buttonStyle(ControlKeyStyle(clear: true))
+        }
+        .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
+        .disabled(!connection.canControl)
     }
 
     private func press(_ key: RemoteKey) {
-        haptic += 1
+        if haptics { haptic += 1 }
         Task { await connection.send(key) }
     }
 }
 
-private struct KeyPressStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-    var fill = RemoteTheme.key
-    var tint = RemoteTheme.ink
-    var height = RemoteTheme.target
-    var radius: CGFloat = 14
-    var font = Font.body.weight(.semibold)
+struct DirectionDisc: View {
+    var large = false
+    var enabled = true
+    var press: (RemoteKey) -> Void
 
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = RoundedRectangle(cornerRadius: radius)
-        configuration.label
-            .font(font)
-            .frame(maxWidth: .infinity, minHeight: height)
-            .foregroundStyle(tint)
-            .background(fill, in: shape)
-            .contentShape(shape)
-            .opacity(isEnabled ? (configuration.isPressed ? 0.64 : 1) : 0.42)
+    var body: some View {
+        Group {
+            if large {
+                VStack(spacing: 12) {
+                    arrow("Up", "chevron.up", .up)
+                    HStack(spacing: 16) {
+                        arrow("Left", "chevron.left", .left)
+                        okay
+                        arrow("Right", "chevron.right", .right)
+                    }
+                    arrow("Down", "chevron.down", .down)
+                }
+                .padding(16)
+                .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 24))
+            } else {
+                ZStack {
+                    Circle().fill(RemoteTheme.surface)
+                    arrow("Up", "chevron.up", .up).offset(y: -88)
+                    arrow("Left", "chevron.left", .left).offset(x: -88)
+                    okay
+                    arrow("Right", "chevron.right", .right).offset(x: 88)
+                    arrow("Down", "chevron.down", .down).offset(y: 88)
+                }
+                .frame(width: 252, height: 252)
+            }
+        }
+        .disabled(!enabled)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Directional controls")
+    }
+
+    private var okay: some View {
+        Button("OK") { press(.select) }.buttonStyle(ControlKeyStyle(size: 84, accent: true))
+    }
+
+    private func arrow(_ title: String, _ symbol: String, _ key: RemoteKey) -> some View {
+        Button(title, systemImage: symbol) { press(key) }
+            .labelStyle(.iconOnly).buttonStyle(ControlKeyStyle(size: large ? 72 : 56, clear: true))
     }
 }

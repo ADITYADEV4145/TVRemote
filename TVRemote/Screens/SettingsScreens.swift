@@ -2,40 +2,81 @@ import SwiftUI
 import TVDriverKit
 
 struct SettingsScreen: View {
+    @AppStorage("hapticsEnabled") private var haptics = true
+    @AppStorage("largeControls") private var largeControls = false
+
     var body: some View {
         ScreenBody {
-            ScreenHeading("TV REMOTE  /  04", "Settings", "Get help or learn what your remote can do.")
+            ScreenHeading("", "Settings", "Make yourself at home.")
             Panel {
-                NavigationLink {
-                    DiagnosticsScreen()
-                } label: {
-                    DetailRow(icon: "wifi.exclamationmark", title: "Fix my connection",
-                              detail: "TV status and troubleshooting", trailing: "chevron.right")
-                }
-                NavigationLink {
-                    CompatibilityScreen()
-                } label: {
-                    DetailRow(icon: "checkmark.shield", title: "Compatibility",
-                              detail: "Supported platforms and limits", trailing: "chevron.right")
-                }
-                NavigationLink {
-                    PrivacyScreen()
-                } label: {
-                    DetailRow(icon: "lock.shield", title: "Privacy",
-                              detail: "What this preview collects", trailing: "chevron.right")
-                }
+                route("slider.horizontal.3", "Appearance", "System, light or dark") { AppearanceScreen() }
+                Toggle(isOn: $haptics) { DetailRow(icon: "hand.tap", title: "Haptics", detail: "A little feedback with each press") }
+                Toggle(isOn: $largeControls) { DetailRow(icon: "hand.point.up", title: "Large controls", detail: "Bigger targets, scrollable remote") }
+                route("mic", "Voice", "On-device access and command help") { VoiceSettingsScreen() }
             }
-            .buttonStyle(.plain)
             Panel {
-                NavigationLink {
-                    UpgradeScreen()
-                } label: {
-                    DetailRow(icon: "star.circle", title: "TV Remote Plus",
-                              detail: "Preview plans · No weekly subscription", trailing: "chevron.right")
-                }
-                .buttonStyle(.plain)
+                route("wifi.exclamationmark", "Fix my connection", "Free help, whenever you need it") { DiagnosticsScreen() }
+                route("tv", "Compatibility", "TV platforms and capabilities") { CompatibilityScreen() }
+                route("lock.shield", "Privacy", "Local by design") { PrivacyScreen() }
             }
+            Panel {
+                route("sparkles", "TV Remote Plus", "Optional upgrade · Preview") { UpgradeScreen() }
+                route("square.stack", "Scenes", "Build a local draft") { ScenesScreen() }
+                route("square.and.arrow.up", "Siri & Shortcuts", "Integration status") { ShortcutsScreen() }
+            }
+            #if DEBUG
+            NavigationLink("Design states") { DesignCatalogScreen() }
+                .frame(minHeight: 44)
+            #endif
+            SupportingCopy(title: "The honest remote", detail: "Demo build. No ads, no purchases, no physical-TV control.")
         }
+        .buttonStyle(.plain)
+    }
+
+    private func route<Destination: View>(_ icon: String, _ title: String, _ detail: String,
+                                         @ViewBuilder destination: () -> Destination) -> some View {
+        NavigationLink(destination: destination) {
+            DetailRow(icon: icon, title: title, detail: detail, trailing: "chevron.right")
+        }
+    }
+}
+
+struct AppearanceScreen: View {
+    @AppStorage("appearance") private var appearance = "System"
+
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Appearance", "Comfortable in every light.")
+            HeroCard(icon: "circle.lefthalf.filled", title: "Your room. Your choice.",
+                     detail: "Use your iPhone’s appearance or choose a look just for this app.")
+            Panel {
+                ForEach(["System", "Light", "Dark"], id: \.self) { choice in
+                    Button { appearance = choice } label: {
+                        DetailRow(icon: choice == "System" ? "iphone" : choice == "Light" ? "sun.max" : "moon",
+                                  title: choice, detail: choice == "System" ? "Follow iPhone settings" : "Always use \(choice.lowercased())",
+                                  trailing: appearance == choice ? "checkmark.circle.fill" : nil)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(appearance == choice ? [.isSelected] : [])
+                }
+            }
+        }.modifier(TaskSurface())
+    }
+}
+
+struct VoiceSettingsScreen: View {
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Voice settings", "Simple commands. On your terms.")
+            HeroCard(icon: "mic", title: "On-device by design",
+                     detail: "Voice recognition is not connected in this build. No microphone or speech permission is requested.")
+            Panel {
+                DetailRow(icon: "hand.raised", title: "Only when you tap", detail: "No always-on listening")
+                DetailRow(icon: "iphone", title: "No cloud fallback", detail: "On-device recognition must be available")
+                DetailRow(icon: "arrow.uturn.backward", title: "Buttons stay free", detail: "Use navigation and volume without voice")
+            }
+            NavigationLink("Voice help") { VoiceScreen(phase: .introduction) }.buttonStyle(SecondaryActionStyle())
+        }.modifier(TaskSurface())
     }
 }
 
@@ -45,122 +86,227 @@ struct DiagnosticsScreen: View {
 
     var body: some View {
         ScreenBody {
-            ScreenHeading("CONNECTION HELP", "Fix my connection",
-                          connection.isDemo ? "Demo results only. Nothing on your network was checked."
-                          : "Check the TV connection and common setup issues.")
+            ScreenHeading("", "Fix my connection", "Let’s get you back to watching.")
             Panel {
-                DetailRow(icon: "tv", title: connection.currentDevice?.name ?? "No TV selected",
-                          detail: connection.state.rawValue)
-                if connection.currentDevice != nil {
-                    Button("Retry connection", systemImage: "arrow.clockwise") {
-                        Task {
-                            if !(await connection.reconnect()), connection.pairingDevice != nil {
-                                showRepair = true
-                            }
-                        }
+                DetailRow(icon: "tv", title: connection.currentDevice?.name ?? "No TV selected", detail: connection.state.rawValue)
+                DetailRow(icon: "wifi", title: "Local network", detail: connection.isDemo ? "Not checked · Demo mode" : "Not checked by this driver")
+                DetailRow(icon: "lock.shield", title: "Local Network permission", detail: "Not checked")
+                DetailRow(icon: "key", title: "Pairing", detail: connection.state == .needsRepair ? "Needs authorization" : "Use the TV’s approval or code when asked")
+            }
+            if connection.currentDevice != nil {
+                Button(connection.state == .needsRepair ? "Pair again" : "Reconnect") {
+                    Task {
+                        if !(await connection.reconnect()), connection.pairingDevice != nil { showRepair = true }
                     }
-                    .buttonStyle(PrimaryActionStyle())
-                    .disabled(connection.isConnecting)
                 }
-                ShareLink(item: "TV Remote connection status: \(connection.state.rawValue). Mode: \(connection.isDemo ? "Demo" : "Live").") {
-                    Label("Share redacted status", systemImage: "square.and.arrow.up")
-                        .frame(minHeight: RemoteTheme.target)
-                }
+                .buttonStyle(PrimaryActionStyle()).disabled(connection.isConnecting)
             }
+            NavigationLink("Connection details") { ConnectionDetailsScreen() }.buttonStyle(SecondaryActionStyle())
             Panel {
-                Text("Recent commands")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                if connection.recentCommands.isEmpty {
-                    Text("No commands sent yet.")
-                        .font(RemoteTheme.metadata)
-                        .foregroundStyle(RemoteTheme.secondary)
-                }
-                ForEach(connection.recentCommands) { command in
-                    DetailRow(icon: "arrow.up.right", title: command.title,
-                              detail: command.timestamp.formatted(.dateTime.hour().minute().second()))
-                }
+                SupportingCopy(title: "Same Wi-Fi?", detail: "Guest networks and client isolation can prevent devices from seeing each other.")
+                SupportingCopy(title: "TV turned on?", detail: "Some TVs need Network Standby or Quick Start enabled to wake over Wi-Fi.")
+                SupportingCopy(title: "Still not working?", detail: "Restart the TV, check network control is enabled, then retry. Your saved TV is kept.")
             }
-            Panel {
-                DetailRow(icon: "wifi", title: "Wi-Fi and TV network",
-                          detail: "Connect your iPhone and TV to the same Wi-Fi. Avoid guest networks.")
-                DetailRow(icon: "lock.shield", title: "Local Network permission",
-                          detail: connection.isDemo ? "Not requested in demo mode."
-                          : "In iPhone Settings, allow Local Network access for TV Remote.")
-                DetailRow(icon: "moon.zzz", title: "Network standby",
-                          detail: "If your TV will not wake, check its network standby or quick-start setting.")
-                DetailRow(icon: "key", title: "Pairing credentials",
-                          detail: "If the TV no longer trusts this remote, pair again from My TVs.")
-            }
+            NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
             ConnectionMessage()
         }
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
+        .modifier(TaskSurface())
         .onAppear { connection.clearMessages() }
-        .onDisappear { connection.clearMessages() }
-        .onChange(of: showRepair) { connection.clearMessages() }
         .sheet(isPresented: $showRepair) {
             NavigationStack { SetupScreen(initiallyStarted: true) { showRepair = false } }
         }
     }
 }
 
-private struct CompatibilityScreen: View {
+struct ConnectionDetailsScreen: View {
+    @Environment(ConnectionManager.self) private var connection
+
     var body: some View {
         ScreenBody {
-            ScreenHeading("KNOW BEFORE YOU CONNECT", "Compatibility",
-                          "This app uses Wi-Fi. An iPhone cannot control infrared-only TVs.")
+            ScreenHeading("", "Connection details", "Evidence, not guesses.")
             Panel {
-                DetailRow(icon: "testtube.2", title: "Demo platforms",
-                          detail: "The Roku TV and Google TV examples are simulated.")
-                DetailRow(icon: "tv", title: "Planned first-release platforms",
-                          detail: "Roku TV, Google TV, Samsung Tizen and LG webOS.")
-                DetailRow(icon: "network.slash", title: "No hardware support in this build",
-                          detail: "No physical TV was connected or tested. Features may vary by model.")
+                DetailRow(icon: "tv", title: "TV", detail: connection.currentDevice?.name ?? "None selected")
+                DetailRow(icon: "circle.dotted", title: "Driver state", detail: connection.state.rawValue)
+                DetailRow(icon: "testtube.2", title: "Mode", detail: connection.isDemo ? "In-process simulation" : "Live driver")
+                DetailRow(icon: "clock", title: "Latency", detail: "Not measured")
             }
-        }
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
+            Text("Recent commands").font(.title3.weight(.semibold))
+            Panel {
+                if connection.recentCommands.isEmpty { Text("No commands sent yet.").foregroundStyle(RemoteTheme.muted) }
+                ForEach(connection.recentCommands) { command in
+                    DetailRow(icon: "arrow.up.right", title: command.title,
+                              detail: "Driver acknowledged · \(command.timestamp.formatted(.dateTime.hour().minute().second()))")
+                }
+            }
+            SupportingCopy(title: "What acknowledgment means", detail: "The driver accepted the action. It does not prove that the TV visibly changed.")
+            NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
+        }.modifier(TaskSurface())
     }
 }
 
-private struct PrivacyScreen: View {
+struct SupportPreviewScreen: View {
+    @Environment(ConnectionManager.self) private var connection
+    @State private var includeCommands = false
+
+    private var report: String {
+        var value = "TV Remote support report\nMode: \(connection.isDemo ? "Simulated" : "Live")\nDriver state: \(connection.state.rawValue)\nNetwork: Not checked\nPermission: Not checked\nTV names, addresses, identifiers, credentials and voice audio: omitted"
+        if includeCommands {
+            value += "\nRecent actions:\n" + connection.recentCommands.map(\.title).joined(separator: "\n")
+        }
+        return value
+    }
+
     var body: some View {
         ScreenBody {
-            ScreenHeading("LOCAL BY DESIGN", "Privacy", "No account is needed to use this preview.")
+            ScreenHeading("", "Before you share", "You choose what leaves your phone.")
             Panel {
-                DetailRow(icon: "iphone", title: "On this iPhone",
-                          detail: "Favorite app pins are stored locally. Demo connections reset when the app restarts.")
-                DetailRow(icon: "mic.slash", title: "No microphone access",
-                          detail: "The preview does not record audio or upload diagnostics.")
-                DetailRow(icon: "square.and.arrow.up", title: "You choose what to share",
-                          detail: "The share sheet exports connection status without TV names, addresses or credentials.")
+                Toggle("Include recent action names", isOn: $includeCommands).frame(minHeight: 44)
+                Text("Search text, TV names, addresses, pairing credentials and voice audio are never included.")
+                    .font(.subheadline).foregroundStyle(RemoteTheme.muted)
             }
-        }
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
+            Panel { Text(report).font(.footnote.monospaced()).textSelection(.enabled) }
+            ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
+                .buttonStyle(PrimaryActionStyle())
+        }.modifier(TaskSurface())
     }
 }
 
-private struct UpgradeScreen: View {
+struct CompatibilityScreen: View {
     var body: some View {
         ScreenBody {
-            ScreenHeading("OPTIONAL UPGRADE", "TV Remote Plus",
-                          "Core controls stay free. No weekly plan and no ads.")
+            ScreenHeading("", "Will my TV work?", "A smart TV with network control is required.")
             Panel {
-                DetailRow(icon: "calendar", title: "Yearly · $14.99",
-                          detail: "7-day free trial planned · then billed yearly", trailing: "star.fill")
-                Divider()
-                DetailRow(icon: "calendar", title: "Monthly · $2.99",
-                          detail: "Billed monthly")
-                Divider()
-                DetailRow(icon: "infinity", title: "Lifetime · $29.99",
-                          detail: "One-time purchase")
+                DetailRow(icon: "testtube.2", title: "Available in this build", detail: "Simulated Roku TV and Google TV only")
+                DetailRow(icon: "tv", title: "Planned first-release platforms", detail: "Roku, Google TV, Samsung Tizen and LG webOS")
+                DetailRow(icon: "network.slash", title: "Hardware not validated", detail: "No physical TV was connected or tested")
             }
-            Text("Preview pricing only. Purchases and restores aren’t available in this build.")
-                .font(RemoteTheme.metadata).foregroundStyle(RemoteTheme.secondary)
+            SupportingCopy(title: "Not every TV is supported", detail: "An iPhone has no infrared blaster. Network control, model and firmware determine which features work.")
+            SupportingCopy(title: "Support varies by model", detail: "A platform name is not a compatibility guarantee. Pairing, wake, apps, inputs and text depend on the installed driver.")
+        }.modifier(TaskSurface())
+    }
+}
+
+struct PrivacyScreen: View {
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Privacy", "Local by design.")
+            Panel {
+                DetailRow(icon: "person.crop.circle.badge.checkmark", title: "No account", detail: "Use the local remote without signing in")
+                DetailRow(icon: "iphone", title: "On this iPhone", detail: "Appearance, favorites and scene drafts are stored locally")
+                DetailRow(icon: "mic.slash", title: "No recording", detail: "This build never requests microphone or speech access")
+                DetailRow(icon: "hand.raised", title: "No automatic diagnostics", detail: "There is no telemetry service in this build")
+            }
+            SupportingCopy(title: "Pairing in this demo", detail: "Simulated connections are held in memory and reset on app restart. Real pairing needs Keychain integration before release.")
+            NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
+        }.modifier(TaskSurface())
+    }
+}
+
+enum CommercePhase: String, CaseIterable {
+    case offer, pending, failed, restore, empty, active
+}
+
+struct UpgradeScreen: View {
+    var phase: CommercePhase = .offer
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", title, "Your basic remote stays free.")
+            if phase == .offer {
+                HeroCard(icon: "sparkles", title: "More, when you want it.",
+                         detail: "Multiple TVs, advanced voice and scenes are product directions, not purchasable features in this build.")
+                Panel {
+                    Text("Illustrative plans").font(.headline)
+                    plan("Yearly", "$14.99 / year", "Eligible 7-day trial shown only with StoreKit eligibility")
+                    Divider()
+                    plan("Monthly", "$2.99 / month", "Billed monthly")
+                    Divider()
+                    plan("Lifetime", "$29.99 once", "One-time purchase")
+                }
+                SupportingCopy(title: "Design preview only", detail: "Prices are examples, not loaded products or an offer. StoreKit purchase, eligibility and entitlements are not connected.")
+                Button("Purchase unavailable") {}.buttonStyle(PrimaryActionStyle()).disabled(true)
+                NavigationLink("Restore purchases") { UpgradeScreen(phase: .restore) }.frame(minHeight: 44)
+            } else {
+                HeroCard(icon: icon, title: statusTitle, detail: statusDetail)
+                if phase == .restore {
+                    Button("Restore unavailable") {}.buttonStyle(PrimaryActionStyle()).disabled(true)
+                }
+            }
+            Button("Keep free") { dismiss() }.buttonStyle(SecondaryActionStyle())
+            HStack {
+                NavigationLink("Terms") { PolicyStatusScreen(terms: true) }.frame(maxWidth: .infinity, minHeight: 44)
+                NavigationLink("Privacy") { PrivacyScreen() }.frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .font(.footnote)
+        }.modifier(TaskSurface())
+    }
+
+    private func plan(_ title: String, _ price: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack { Text(title).font(.headline); Spacer(); Text(price).font(.body.weight(.medium)) }
+            Text(detail).font(.subheadline).foregroundStyle(RemoteTheme.muted)
+        }.padding(.vertical, 8)
+    }
+    private var title: String {
+        switch phase {
+        case .offer: "TV Remote Plus"
+        case .pending: "Waiting for approval"
+        case .failed: "Purchase not completed"
+        case .restore: "Restore purchases"
+        case .empty: "No purchases found"
+        case .active: "Plus is active"
         }
-        .toolbar(.visible, for: .navigationBar)
-        .navigationBarTitleDisplayMode(.inline)
+    }
+    private var icon: String {
+        switch phase {
+        case .pending: "clock"
+        case .failed: "exclamationmark.circle"
+        case .empty: "arrow.clockwise"
+        case .active: "checkmark.circle"
+        default: "sparkles"
+        }
+    }
+    private var statusTitle: String {
+        switch phase {
+        case .pending: "Nothing to do just yet"
+        case .failed: "Your free remote is ready"
+        case .restore: "Already have Plus?"
+        case .empty: "Check your Apple Account"
+        case .active: "Thanks for your support"
+        default: "Optional. Always."
+        }
+    }
+    private var statusDetail: String {
+        switch phase {
+        case .pending: "A pending transaction does not unlock Plus. Continue using the free remote while approval is pending."
+        case .failed: "No entitlement was granted. Purchase errors never interrupt pairing, recovery or free controls."
+        case .restore: "Restoring will check valid purchases for your Apple Account, without starting a new purchase. Not connected in this build."
+        case .empty: "No valid entitlement was returned. Keep using the free remote, or check that you use the Apple Account that purchased Plus."
+        case .active: "This screen requires a verified entitlement from StoreKit. The design catalog is only a presentation preview."
+        default: ""
+        }
+    }
+}
+
+struct PolicyStatusScreen: View {
+    var terms = false
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", terms ? "Terms" : "Privacy policy", "Before release")
+            HeroCard(icon: "doc.text", title: "Policy not published yet",
+                     detail: "This demo does not sell subscriptions. Final legal terms and privacy policy must be published before StoreKit is enabled.")
+        }.modifier(TaskSurface())
+    }
+}
+
+struct ShortcutsScreen: View {
+    var body: some View {
+        ScreenBody {
+            ScreenHeading("", "Siri & Shortcuts", "Your favorite actions, a little closer.")
+            HeroCard(icon: "square.stack.3d.up", title: "Not installed in this build",
+                     detail: "Siri intents, widgets, Control Center and Watch are later integrations. No system shortcut is created here.")
+            SupportingCopy(title: "Choose the right TV", detail: "A shortcut must use an explicit saved TV and supported action. It must never silently choose another room.")
+        }.modifier(TaskSurface())
     }
 }

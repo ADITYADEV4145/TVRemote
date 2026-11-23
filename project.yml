@@ -47,6 +47,15 @@ targets:
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.adityapunjani.TVRemote.UITests
       GENERATE_INFOPLIST_FILE: YES
+  TVRemoteDesignTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [TVRemoteDesignTests]
+    dependencies:
+      - target: TVRemote
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.adityapunjani.TVRemote.DesignTests
+      GENERATE_INFOPLIST_FILE: YES
 schemes:
   TVRemote:
     build:
@@ -56,3 +65,10 @@ schemes:
       targets:
         - TVRemoteTests
         - TVRemoteUITests
+  TVRemoteDesignReview:
+    build:
+      targets:
+        TVRemote: all
+    test:
+      targets:
+        - TVRemoteDesignTests

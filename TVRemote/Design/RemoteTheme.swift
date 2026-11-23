@@ -2,19 +2,28 @@ import SwiftUI
 import UIKit
 
 enum RemoteTheme {
-    static let canvas = adaptive(0xF2F5FA, 0x0D111A)
-    static let surface = adaptive(0xFFFFFF, 0x171F2E)
-    static let key = adaptive(0xE9EEF8, 0x253249)
-    static let ink = adaptive(0x101A2C, 0xF1F5FF)
-    static let secondary = adaptive(0x475773, 0xABBBD5)
-    static let accent = adaptive(0x254DB7, 0xA8BEFF)
-    static let onAccent = adaptive(0xFFFFFF, 0x10214B)
-    static let healthy = adaptive(0x196445, 0x78DDB0)
-    static let warning = adaptive(0x93432D, 0xFFAF96)
+    static let canvas = adaptive(0xF3F4F8, 0x10121A)
+    static let surface = adaptive(0xFFFFFF, 0x1D202B)
+    static let raised = adaptive(0xE7EAF2, 0x2A2E3B)
+    static let text = adaptive(0x171A26, 0xF7F8FC)
+    static let muted = adaptive(0x5D6475, 0xA8AFC2)
+    static let accent = adaptive(0x3C50C8, 0xB5C1FF)
+    static let onAccent = adaptive(0xFFFFFF, 0x1B2451)
+    static let accentSoft = adaptive(0xE5E9FF, 0x282F4A)
+    static let success = adaptive(0x1D7055, 0x8DD6BA)
+    static let warning = adaptive(0x805700, 0xEBC887)
+    static let danger = adaptive(0xB22D47, 0xFF9EAC)
+    static let border = adaptive(0xD9DDE8, 0x353B4A)
+    static let disabled = adaptive(0x72798A, 0x8D95A9)
+    // Compatibility aliases for independently developed tools.
+    static let key = raised
+    static let ink = text
+    static let secondary = muted
+    static let healthy = success
     static let spacing: CGFloat = 16
-    static let gutter: CGFloat = 20
+    static let gutter: CGFloat = 24
     static let radius: CGFloat = 24
-    static let target: CGFloat = 48
+    static let target: CGFloat = 56
     static let title = Font.largeTitle.weight(.bold)
     static let metadata = Font.subheadline
     static let label = Font.caption.weight(.semibold)
@@ -30,11 +39,12 @@ enum RemoteTheme {
 }
 
 struct ScreenBody<Content: View>: View {
+    var spacing: CGFloat = RemoteTheme.spacing
     @ViewBuilder var content: Content
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: RemoteTheme.spacing, content: { content })
+            VStack(alignment: .leading, spacing: spacing, content: { content })
                 .padding(.horizontal, RemoteTheme.gutter)
                 .padding(.vertical, RemoteTheme.spacing)
                 .frame(maxWidth: 560)
@@ -59,9 +69,6 @@ struct ScreenHeading: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(eyebrow.uppercased())
-                .font(RemoteTheme.label).tracking(2).foregroundStyle(RemoteTheme.accent)
-                .accessibilityHidden(true)
             Text(title)
                 .font(RemoteTheme.title).accessibilityAddTraits(.isHeader)
             if let summary {
@@ -125,7 +132,7 @@ struct PrimaryActionStyle: ButtonStyle {
             .frame(maxWidth: .infinity, minHeight: RemoteTheme.target)
             .padding(.horizontal, 12)
             .foregroundStyle(RemoteTheme.onAccent)
-            .background(RemoteTheme.accent, in: RoundedRectangle(cornerRadius: 15))
+            .background(RemoteTheme.accent, in: RoundedRectangle(cornerRadius: 20))
             .opacity(isEnabled ? (configuration.isPressed ? 0.75 : 1) : 0.55)
             .contentShape(Rectangle())
     }

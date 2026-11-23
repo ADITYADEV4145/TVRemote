@@ -50,6 +50,25 @@ final class ConnectionManager {
         error = nil
     }
 
+    #if DEBUG
+    // Explicit design fixtures, never compiled into a Release build.
+    func prepareDesignPreview(state: ConnectionState = .ready, pairing: Bool = false) async {
+        await discover()
+        guard devices.count >= 2 else { return }
+        _ = await select(devices[1])
+        _ = await submit(code: MockTVDriver.demoCode)
+        _ = await select(devices[0])
+        if pairing {
+            await forget(devices[1])
+            _ = await select(devices[1])
+        }
+        // Let the driver's last connection notification drain before selecting a fixture state.
+        await Task.yield()
+        self.state = state
+        clearMessages()
+    }
+    #endif
+
     func discover() async {
         guard !isDiscovering else { return }
         isDiscovering = true
