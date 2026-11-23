@@ -1,0 +1,76 @@
+{
+  "platform": "lg",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "sent": {
+        "type": "register",
+        "id": "register",
+        "payload": {
+          "pairingType": "PROMPT"
+        }
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "register",
+        "payload": {
+          "returnValue": true,
+          "pairingType": "PROMPT"
+        }
+      }
+    },
+    {
+      "received": {
+        "type": "registered",
+        "id": "register",
+        "payload": {
+          "client-key": "<client-key>"
+        }
+      }
+    },
+    {
+      "sent": {
+        "id": "vol",
+        "type": "request",
+        "uri": "ssap://audio/getVolume"
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "vol",
+        "payload": {
+          "returnValue": true,
+          "volume": 25,
+          "muted": false,
+          "volumeStatus": {
+            "volume": 25,
+            "muteStatus": false
+          }
+        }
+      }
+    },
+    {
+      "sent": {
+        "id": "pointer",
+        "type": "request",
+        "uri": "ssap://com.webos.service.networkinput/getPointerInputSocket"
+      }
+    },
+    {
+      "received": {
+        "type": "response",
+        "id": "pointer",
+        "payload": {
+          "returnValue": true,
+          "socketPath": "ws://<host>/resources/<ticket>.sock"
+        }
+      }
+    },
+    {
+      "pointer_sent": "type:button\nname:LEFT\n\n"
+    }
+  ]
+}

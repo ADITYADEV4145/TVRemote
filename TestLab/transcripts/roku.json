@@ -1,0 +1,76 @@
+{
+  "platform": "roku",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/query/device-info"
+      },
+      "response": {
+        "status": 200,
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<device-info><udn>uuid:roku:ecp:020000000001</udn><serial-number>SIMROKU001</serial-number><device-id>SIMROKU001</device-id><model-name>Roku TV</model-name><model-number>SIM</model-number><friendly-device-name>Lab Roku</friendly-device-name><user-device-name>Lab Roku</user-device-name><is-tv>true</is-tv><power-mode>PowerOn</power-mode><supports-find-remote>true</supports-find-remote><wifi-mac>02:00:00:00:00:01</wifi-mac><software-version>14.0.0</software-version></device-info>"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/query/apps"
+      },
+      "response": {
+        "status": 200,
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<apps><app id=\"12\" type=\"appl\" version=\"1.0\">Netflix</app><app id=\"837\" type=\"appl\" version=\"1.0\">YouTube</app></apps>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/keypress/VolumeUp"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/launch/12"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/query/active-app"
+      },
+      "response": {
+        "status": 200,
+        "body": "<?xml version='1.0' encoding='utf-8'?>\n<active-app><app id=\"12\">Netflix</app></active-app>"
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/search/browse?keyword=movie"
+      },
+      "response": {
+        "status": 200,
+        "body": ""
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/keypress/InvalidKey"
+      },
+      "response": {
+        "status": 400,
+        "body": "Unknown ECP key"
+      }
+    }
+  ]
+}

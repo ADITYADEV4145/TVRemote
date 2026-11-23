@@ -1,0 +1,111 @@
+{
+  "platform": "google",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "channel": "pair",
+      "direction": "client_to_tv",
+      "delimited_hex": "22080210c801521b0a0961747672656d6f7465120e4669787475726520636c69656e74"
+    },
+    {
+      "channel": "pair",
+      "direction": "tv_to_client",
+      "delimited_hex": "16080210c8015a0f0a0d4c616220476f6f676c65205456"
+    },
+    {
+      "channel": "pair",
+      "direction": "client_to_tv",
+      "delimited_hex": "10080210c801a201080a04080310061801"
+    },
+    {
+      "channel": "pair",
+      "direction": "tv_to_client",
+      "delimited_hex": "10080210c801a201081204080310061802"
+    },
+    {
+      "channel": "pair",
+      "direction": "client_to_tv",
+      "delimited_hex": "10080210c801f201080a04080310061001"
+    },
+    {
+      "channel": "pair",
+      "direction": "tv_to_client",
+      "delimited_hex": "08080210c801fa0100"
+    },
+    {
+      "channel": "pair",
+      "direction": "client_to_tv",
+      "redacted_field": "secret"
+    },
+    {
+      "channel": "pair",
+      "direction": "tv_to_client",
+      "redacted_field": "secret_ack"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "4f0a4d08e70412480a0d4c616220476f6f676c652054561207546573744c616218012201312a24636f6d2e676f6f676c652e616e64726f69642e74762e72656d6f74652e736572766963653203312e30"
+    },
+    {
+      "channel": "remote",
+      "direction": "client_to_tv",
+      "delimited_hex": "1e0a1c08e704121718012201312a0961747672656d6f74653205312e302e30"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "05120308e704"
+    },
+    {
+      "channel": "remote",
+      "direction": "client_to_tv",
+      "delimited_hex": "05120308e704"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "11a2010e0a0808016204686f6d6512020801"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "189203151a0d4c616220476f6f676c65205456306438194000"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "05c202020801"
+    },
+    {
+      "channel": "remote",
+      "direction": "client_to_tv",
+      "delimited_hex": "06520408181003"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "189203151a0d4c616220476f6f676c652054563064381a4000"
+    },
+    {
+      "channel": "remote",
+      "direction": "client_to_tv",
+      "delimited_hex": "1cd205190a1768747470733a2f2f7777772e796f75747562652e636f6d"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "24a201210a1b0801621768747470733a2f2f7777772e796f75747562652e636f6d12020801"
+    },
+    {
+      "channel": "remote",
+      "direction": "tv_to_client",
+      "delimited_hex": "06420408011000"
+    },
+    {
+      "channel": "remote",
+      "direction": "client_to_tv",
+      "delimited_hex": "044a020801"
+    }
+  ]
+}

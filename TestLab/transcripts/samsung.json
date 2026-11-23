@@ -1,0 +1,70 @@
+{
+  "platform": "samsung",
+  "source": "TestLab simulator, not hardware",
+  "frames": [
+    {
+      "connect": "/api/v2/channels/samsung.remote.control",
+      "query": {
+        "name": "Rml4dHVyZSBjbGllbnQ="
+      }
+    },
+    {
+      "received": {
+        "event": "ms.channel.connect",
+        "data": {
+          "id": "lab-samsung",
+          "token": "<token>",
+          "clients": [
+            {
+              "id": "lab-samsung",
+              "deviceName": "Rml4dHVyZSBjbGllbnQ=",
+              "isHost": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Click",
+          "DataOfCmd": "KEY_VOLUP",
+          "Option": "false",
+          "TypeOfRemote": "SendRemoteKey"
+        }
+      }
+    },
+    {
+      "sent": {
+        "method": "ms.remote.control",
+        "params": {
+          "Cmd": "Click",
+          "DataOfCmd": "KEY_INVALID",
+          "Option": "false",
+          "TypeOfRemote": "SendRemoteKey"
+        }
+      }
+    },
+    {
+      "received": {
+        "event": "ms.error",
+        "data": {
+          "message": "unsupported command"
+        }
+      }
+    },
+    {
+      "connect": "/api/v2/channels/samsung.remote.control",
+      "query": {
+        "name": "Rml4dHVyZSBjbGllbnQ=",
+        "token": "wrong-token"
+      }
+    },
+    {
+      "received": {
+        "event": "ms.channel.unauthorized"
+      }
+    }
+  ]
+}
