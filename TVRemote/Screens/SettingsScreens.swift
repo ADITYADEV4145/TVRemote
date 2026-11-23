@@ -100,6 +100,12 @@ struct DiagnosticsScreen: View {
                     }
                 }
                 .buttonStyle(PrimaryActionStyle()).disabled(connection.isConnecting)
+                if connection.canTryPairingAgain {
+                    Button("Try pairing again") { connection.tryPairingAgain() }
+                        .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)
+                    SupportingCopy(title: "Pairing may need to be renewed",
+                                   detail: "Google TV can drop the connection without saying why. If reconnecting doesn’t work, try a new pairing code.")
+                }
                 if !connection.isDemo, !connection.canControl {
                     Button("Update TV address") { editingAddress = true }
                         .buttonStyle(SecondaryActionStyle()).disabled(connection.isConnecting)

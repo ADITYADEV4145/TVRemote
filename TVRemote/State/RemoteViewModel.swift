@@ -260,6 +260,17 @@ final class RemoteViewModel {
         return await select(devices.first(where: { $0.id == device.id }) ?? device)
     }
 
+    var canTryPairingAgain: Bool {
+        state == .degraded && currentDevice.flatMap { live?.device($0.id)?.id.platform } == .googleTV
+    }
+
+    func tryPairingAgain() {
+        guard canTryPairingAgain, !isConnecting, let live, let device = currentDevice,
+              let selected = live.device(device.id) else { return }
+        selectionGeneration += 1
+        startPairing(device, selected: selected, using: live)
+    }
+
     func forget(_ device: TVDevice) async {
         keyboardDrafts.removeValue(forKey: device.id)
         guard !isConnecting else { return }
