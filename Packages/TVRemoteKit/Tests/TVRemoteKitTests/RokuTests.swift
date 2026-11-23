@@ -4,12 +4,12 @@ import TVRemoteKit
 
 private let endpoint = TVEndpoint(host: "192.0.2.10", port: 8060)
 
-private func deviceInfo(id: String = "roku:ABCD", power: String = "PowerOn") -> HTTPResponse {
+private func deviceInfo(id: String = "roku:ABCD", power: String = "PowerOn", isTV: Bool = true) -> HTTPResponse {
     HTTPResponse(status: 200, body: Data("""
         <device-info>
             <udn>\(id)</udn>
             <friendly-device-name>Family &amp; Friends</friendly-device-name>
-            <is-tv>true</is-tv>
+            <is-tv>\(isTV)</is-tv>
             <power-mode>\(power)</power-mode>
         </device-info>
         """.utf8))
@@ -127,6 +127,29 @@ private actor Transcript: HTTPTransport {
     try await driver.connect(tv, .none)
     await #expect(throws: TVError.identityMismatch) { try await driver.send(.home) }
     #expect(await transport.requests.map(\.method) == [.get, .get, .get])
+}
+
+@Test func partialRokuTextIsNotReplayedAfterReconnection() async throws {
+    let streamingPlayer = deviceInfo(isTV: false)
+    let transport = Transcript([
+        streamingPlayer, streamingPlayer, streamingPlayer, HTTPResponse(status: 200),
+        HTTPResponse(status: 503), streamingPlayer
+    ])
+    let manager = ConnectionManager(
+        drivers: [TVDriverFactory(platform: .roku) { RokuECPDriver(http: transport) }],
+        credentials: MemoryCredentialStore(), clock: ImmediateClock()
+    )
+    let tv = try await manager.probe(endpoint, platform: .roku)
+    try await manager.connect(tv)
+    await #expect(throws: TVError.requestFailed(status: 503)) { try await manager.send(.text("ab")) }
+    let requests = await transport.requests
+    #expect(requests.filter { $0.method == .post }.map { $0.url.path } == ["/keypress/Lit_a", "/keypress/Lit_b"])
+    var states = manager.state.makeAsyncIterator()
+    #expect(await states.next() == .ready)
+}
+
+private struct ImmediateClock: ConnectionClock {
+    func sleep(for duration: Duration) async throws { try Task.checkCancellation() }
 }
 
 @Test func ssdpRequiresMatchingSourceAndPlatformFingerprint() {

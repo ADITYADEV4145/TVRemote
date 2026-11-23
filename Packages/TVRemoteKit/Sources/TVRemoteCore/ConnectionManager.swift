@@ -108,7 +108,9 @@ public actor ConnectionManager {
     }
 
     public func send(_ key: RemoteKey) async throws {
-        try await perform { try await $0.send(key) }
+        let replay: Bool
+        if case .text = key { replay = false } else { replay = true }
+        try await perform(replay: replay) { try await $0.send(key) }
     }
 
     public func launch(_ app: AppID) async throws {
@@ -160,7 +162,9 @@ public actor ConnectionManager {
         }
     }
 
-    private func perform(_ operation: @Sendable (any TVDriver) async throws -> Void) async throws {
+    private func perform(
+        replay: Bool = true, _ operation: @Sendable (any TVDriver) async throws -> Void
+    ) async throws {
         guard !commandInFlight else { throw TVError.busy }
         guard let tv = currentDevice, let driver, phase == .ready else { throw TVError.notConnected }
         let token = generation
@@ -186,6 +190,10 @@ public actor ConnectionManager {
                 let factory = try factory(for: tv.id.platform)
                 let credential = try await loadCredential(for: tv)
                 try ensureCurrent(token)
+                guard replay else {
+                    try await recover(tv, credential: credential, factory: factory, token: token, initialError: error)
+                    throw error
+                }
                 do {
                     let fresh = factory.makeDriver()
                     try await fresh.connect(tv, credential)
