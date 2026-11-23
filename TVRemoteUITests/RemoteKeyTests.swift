@@ -1,6 +1,36 @@
 import XCTest
 
 final class RemoteKeyTests: XCTestCase {
+    func testFavoritesNavigationBelongsToTheSelectedTV() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Find my TV"].tap()
+        app.buttons["Find TVs"].tap()
+        select("Living Room", in: app)
+        app.buttons["Open remote"].tap()
+        tabButton("Apps", in: app).tap()
+        select("Edit favorites", in: app)
+        let editor = app.staticTexts["Pin apps for quick access. Drag to reorder pinned apps."]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        tabButton("Remote", in: app).tap()
+        tabButton("Apps", in: app).tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5), "A tab switch on the same TV must preserve the editor.")
+
+        tabButton("My TVs", in: app).tap()
+        app.buttons["Add a TV"].tap()
+        select("Bedroom", in: app)
+        let code = app.textFields["pairingCode"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("123456")
+        app.buttons["Pair TV"].tap()
+        XCTAssertTrue(app.buttons["Open remote"].waitForExistence(timeout: 5))
+        app.buttons["Open remote"].tap()
+        tabButton("Apps", in: app).tap()
+        XCTAssertTrue(app.staticTexts["Apps & favorites"].waitForExistence(timeout: 5))
+        XCTAssertFalse(editor.exists, "Changing TVs must not retain the previous TV's editor.")
+    }
+
     func testTabSwitchPreservesNavigationAndActiveTabReturnsToRoot() {
         continueAfterFailure = false
         let app = launchSetup()

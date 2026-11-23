@@ -100,6 +100,8 @@ struct RootScreen: View {
         }
         .onChange(of: tab) { connection.clearMessages() }
         .onChange(of: sheet) { connection.clearMessages() }
+        // Favorites belong to the selected TV, not the previous tab context.
+        .onChange(of: connection.currentDevice?.id) { appsPath.removeAll() }
         .sheet(item: $sheet) { tool in
             NavigationStack {
                 switch tool {
