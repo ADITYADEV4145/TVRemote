@@ -196,7 +196,7 @@ public struct GrammarInterpreter: Sendable {
                      ["main", "menu"], ["take", "me", "home"], ["press", "home"], ["home", "button"], ["go", "to", "main", "menu"]]),
             (.back, [["back"], ["go", "back"], ["return"], ["previous", "screen"], ["press", "back"], ["back", "button"], ["exit"],
                      ["go", "back", "one"], ["take", "me", "back"], ["get", "out"], ["close", "this"], ["close", "it"], ["go", "back", "a", "screen"], ["back", "up"]]),
-            (.select, [["select"], ["enter"], ["click"], ["choose"], ["pick"], ["confirm"], ["press", "ok"], ["press", "okay"], ["hit", "ok"], ["hit", "okay"], ["click", "ok"], ["tap", "ok"],
+            (.select, [["select"], ["enter"], ["click"], ["choose"], ["pick"], ["confirm"], ["press", "ok"], ["press", "okay"], ["hit", "ok"], ["hit", "okay"], ["click", "ok"], ["click", "okay"], ["tap", "ok"], ["tap", "okay"],
                        ["press", "select"], ["press", "enter"], ["select", "it"], ["select", "this"], ["select", "that"],
                        ["choose", "this"], ["choose", "that"], ["click", "it"], ["click", "that"], ["ok", "button"], ["okay", "button"], ["open", "it"], ["open", "this"], ["open", "that"], ["pick", "that", "one"], ["pick", "this", "one"], ["that", "one"]]),
             (.menu, [["menu"], ["options"], ["option"], ["star"], ["star", "button"], ["open", "menu"], ["show", "options"], ["more", "options"], ["show", "menu"], ["show", "the", "menu"]]),
