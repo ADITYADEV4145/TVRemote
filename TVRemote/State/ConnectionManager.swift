@@ -25,6 +25,7 @@ final class ConnectionManager {
     let isDemo: Bool
     private let driver: any TVDriver
     private var credentials: [TVDevice.ID: Credential] = [:]
+    private var messageGeneration = 0
     @ObservationIgnored private var stateTask: Task<Void, Never>?
 
     init(driver: any TVDriver, isDemo: Bool = false) {
@@ -42,6 +43,12 @@ final class ConnectionManager {
     var canPower: Bool { !isConnecting && currentDevice != nil && (state == .ready || state == .asleep) }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver is any PointerDriver }
     var supportsManualAddress: Bool { driver is any ManualAddressDriver }
+
+    func clearMessages() {
+        messageGeneration += 1
+        feedback = nil
+        error = nil
+    }
 
     func discover() async {
         guard !isDiscovering else { return }
@@ -113,8 +120,7 @@ final class ConnectionManager {
         isConnecting = true
         currentDevice = nil
         state = .idle
-        feedback = nil
-        error = nil
+        clearMessages()
         if let disconnectingDriver = driver as? any DisconnectingTVDriver {
             await disconnectingDriver.disconnect()
         }
@@ -177,13 +183,15 @@ final class ConnectionManager {
 
     private func perform(_ command: String, feedback message: String? = nil,
                          action: () async throws -> Void) async {
+        let generation = messageGeneration
         error = nil
         do {
             try await action()
             recentCommands.insert(RecentCommand(title: command), at: 0)
             if recentCommands.count > 20 { recentCommands.removeLast() }
-            feedback = message
+            if messageGeneration == generation { feedback = message }
         } catch {
+            guard messageGeneration == generation else { return }
             feedback = nil
             self.error = error.localizedDescription
         }

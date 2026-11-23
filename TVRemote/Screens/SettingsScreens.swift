@@ -96,6 +96,9 @@ struct DiagnosticsScreen: View {
         }
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { connection.clearMessages() }
+        .onDisappear { connection.clearMessages() }
+        .onChange(of: showRepair) { connection.clearMessages() }
         .sheet(isPresented: $showRepair) {
             NavigationStack { SetupScreen(initiallyStarted: true) { showRepair = false } }
         }

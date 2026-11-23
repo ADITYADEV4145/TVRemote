@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootScreen: View {
+    @Environment(ConnectionManager.self) private var connection
     @State private var tab = Tab.remote
     @State private var sheet: Tool?
 
@@ -44,6 +45,8 @@ struct RootScreen: View {
             .tabItem { Label("Settings", systemImage: "gearshape") }
             .tag(Tab.settings)
         }
+        .onChange(of: tab) { connection.clearMessages() }
+        .onChange(of: sheet) { connection.clearMessages() }
         .sheet(item: $sheet) { tool in
             NavigationStack {
                 switch tool {

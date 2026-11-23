@@ -123,6 +123,20 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.pairingDevice, bedroom)
     }
 
+    func testClearingMessagesLeavesTheCommandHistoryIntact() async {
+        let connection = ConnectionManager(driver: MockTVDriver())
+        _ = await connection.select(MockTVDriver.devices[0])
+        await waitForState(.ready, on: connection)
+        await connection.search("Movie night")
+        XCTAssertNotNil(connection.feedback)
+
+        connection.clearMessages()
+
+        XCTAssertNil(connection.feedback)
+        XCTAssertNil(connection.error)
+        XCTAssertEqual(connection.recentCommands.map(\.title), ["TV search"])
+    }
+
     private func waitForState(_ state: ConnectionState, on connection: ConnectionManager) async {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while connection.state != state && ContinuousClock.now < deadline {
