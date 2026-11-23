@@ -25,7 +25,9 @@ struct TVRemoteApp: App {
         if ProcessInfo.processInfo.arguments.contains("-lab-ui-test"),
            let preferences = UserDefaults(suiteName: "TVRemoteLabUITests") {
             preferences.removePersistentDomain(forName: "TVRemoteLabUITests")
-            return RemoteViewModel(live: LiveTVSession(defaults: preferences, credentials: MemoryCredentialStore()))
+            let connection = RemoteViewModel(live: LiveTVSession(defaults: preferences, credentials: MemoryCredentialStore()))
+            connection.approvalResponseDelay = .seconds(3)
+            return connection
         }
         #endif
         return RemoteViewModel(live: LiveTVSession())

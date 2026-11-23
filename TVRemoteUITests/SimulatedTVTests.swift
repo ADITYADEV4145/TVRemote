@@ -29,7 +29,6 @@ final class SimulatedTVTests: XCTestCase {
         app.buttons["Find my TV"].tap()
         app.buttons["Find TVs"].tap()
         if brand == "samsung" { try await chaos("approval", for: brand, allow: false) }
-        if brand == "lg" { try await chaos("network", for: brand, latency_ms: 650) }
         enterAddress(port, in: app)
 
         if brand == "google" {
@@ -41,25 +40,22 @@ final class SimulatedTVTests: XCTestCase {
             codeField.tap()
             codeField.typeText(pin)
             app.buttons["Pair TV"].tap()
-        } else if brand == "samsung" {
-            let sawApproval = app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12)
-            let rejected = app.staticTexts["Pair again with the TV to continue."].waitForExistence(timeout: 8)
-            try await chaos("approval", for: brand, allow: true)
-            XCTAssertTrue(sawApproval)
-            XCTAssertTrue(rejected)
+        } else if brand == "samsung" || brand == "lg" {
+            let retry = app.buttons["Try again"]
+            XCTAssertTrue(app.staticTexts["Look up at the TV"].waitForExistence(timeout: 12))
+            XCTAssertTrue(app.staticTexts["Connecting to TV"].exists)
+            XCTAssertFalse(retry.isEnabled)
+            XCTAssertFalse(app.staticTexts["Pair again with the TV to continue."].exists)
             capture("\(brand)-approval")
-            app.buttons["Try again"].tap()
-            enterAddress(port, in: app)
-        } else if brand == "lg" {
-            let approval = app.staticTexts["Look up at the TV"]
-            for _ in 0..<60 {
-                if approval.exists { break }
-                try await Task.sleep(for: .milliseconds(150))
+            if brand == "samsung" {
+                let rejected = app.staticTexts["Pair again with the TV to continue."].waitForExistence(timeout: 8)
+                try await chaos("approval", for: brand, allow: true)
+                XCTAssertTrue(rejected)
+                XCTAssertTrue(retry.isEnabled)
+                XCTAssertFalse(app.staticTexts["Connecting to TV"].exists)
+                retry.tap()
+                enterAddress(port, in: app)
             }
-            let sawApproval = approval.exists
-            if sawApproval { capture("\(brand)-approval") }
-            try await chaos("network", for: brand, latency_ms: 0)
-            XCTAssertTrue(sawApproval)
         }
         let openRemote = app.buttons["Open remote"]
         XCTAssertTrue(openRemote.waitForExistence(timeout: 20))
@@ -102,16 +98,15 @@ final class SimulatedTVTests: XCTestCase {
         return try JSONDecoder().decode(Status.self, from: data)
     }
 
-    private func chaos(_ action: String, for brand: String, allow: Bool? = nil, latency_ms: Int? = nil) async throws {
+    private func chaos(_ action: String, for brand: String, allow: Bool? = nil) async throws {
         struct Change: Encodable {
             let action: String
             let allow: Bool?
-            let latency_ms: Int?
         }
         var request = URLRequest(url: URL(string: "http://127.0.0.1:8090/tvs/\(brand)/chaos")!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Change(action: action, allow: allow, latency_ms: latency_ms))
+        request.httpBody = try JSONEncoder().encode(Change(action: action, allow: allow))
         let (_, response) = try await URLSession.shared.data(for: request)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
     }

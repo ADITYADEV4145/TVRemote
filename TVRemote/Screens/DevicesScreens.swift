@@ -52,10 +52,11 @@ struct SetupScreen: View {
                 SupportingCopy(title: "No payment needed", detail: "Power, supported navigation, volume and recovery stay free.")
             default:
                 SetupStatusContent(page: page, retry: { connection.cancelPairing(); page = .discovery },
-                                   manual: { page = .manual })
+                                   manual: { page = .manual },
+                                   retryDisabled: page == .approval && connection.awaitingTVApproval)
             }
             if connection.isConnecting { ProgressView("Connecting to TV") }
-            ConnectionMessage()
+            if page != .approval || !connection.awaitingTVApproval { ConnectionMessage() }
         }
         .modifier(CloseTool())
         .toolbar {
@@ -158,6 +159,7 @@ struct SetupStatusContent: View {
     let page: SetupPage
     var retry: () -> Void = {}
     var manual: () -> Void = {}
+    var retryDisabled = false
 
     var body: some View {
         Group {
@@ -170,6 +172,7 @@ struct SetupStatusContent: View {
                 }.buttonStyle(PrimaryActionStyle())
             } else {
                 Button(page == .approval ? "Try again" : "Search again", action: retry).buttonStyle(PrimaryActionStyle())
+                    .disabled(retryDisabled)
             }
             Button(page == .empty ? "Enter IP address" : "Choose another TV",
                    action: page == .empty ? manual : retry).buttonStyle(SecondaryActionStyle())

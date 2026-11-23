@@ -28,6 +28,9 @@ final class RemoteViewModel {
     let isDemo: Bool
     private let driver: MockTVDriver?
     private let live: LiveTVSession?
+    #if DEBUG
+    var approvalResponseDelay: Duration?
+    #endif
     private var demoCredentials: [TVDevice.ID: String] = [:]
     private var messageGeneration = 0
     @ObservationIgnored private var stateTask: Task<Void, Never>?
@@ -64,6 +67,7 @@ final class RemoteViewModel {
     var canPower: Bool { !isConnecting && currentDevice != nil && (state == .ready || state == .asleep) }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
     var supportsManualAddress: Bool { true }
+    var awaitingTVApproval: Bool { pairingPrompt == .approval && isConnecting }
 
     func monitor() async {
         guard let live else { return }
@@ -352,6 +356,9 @@ final class RemoteViewModel {
         switch prompt {
         case .approveOnTV:
             pairingPrompt = .approval
+            #if DEBUG
+            if let approvalResponseDelay { try await Task.sleep(for: approvalResponseDelay) }
+            #endif
             return .acknowledged
         case .enterCode:
             pairingPrompt = .code
