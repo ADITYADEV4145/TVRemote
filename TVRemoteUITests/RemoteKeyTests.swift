@@ -38,6 +38,16 @@ final class RemoteKeyTests: XCTestCase {
         app.buttons["Pair TV"].tap()
         XCTAssertTrue(app.buttons["Open remote"].waitForExistence(timeout: 5))
         app.buttons["Open remote"].tap()
+        let touchpad = app.buttons["Touchpad"]
+        let buttons = app.buttons["Buttons"]
+        // Accessibility frames use floating-point coordinate conversions.
+        XCTAssertGreaterThanOrEqual(touchpad.frame.height + 0.001, 44)
+        XCTAssertGreaterThanOrEqual(buttons.frame.height + 0.001, 44)
+        // Probe below/above the label, not just either horizontal edge.
+        touchpad.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5))
+        buttons.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).tap()
+        XCTAssertTrue(app.buttons["OK"].waitForExistence(timeout: 5))
         app.buttons["Touchpad"].coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         // The decorative gesture surface is intentionally hidden from VoiceOver.
         XCTAssertTrue(app.buttons["Select"].waitForExistence(timeout: 5))
