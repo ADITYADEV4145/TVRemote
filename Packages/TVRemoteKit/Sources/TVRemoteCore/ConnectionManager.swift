@@ -221,9 +221,10 @@ public actor ConnectionManager {
     ) async throws {
         try ensureCurrent(token)
         transition(.recovering)
-        if attemptWake && tv.capabilities.contains(.networkWake) {
+        let wakeTarget = currentDevice ?? tv
+        if attemptWake && wakeTarget.capabilities.contains(.networkWake) {
             let wakeDriver = factory.makeDriver()
-            _ = try? await wakeDriver.wake(tv)
+            _ = try? await wakeDriver.wake(wakeTarget)
             try ensureCurrent(token)
         }
 
@@ -233,7 +234,7 @@ public actor ConnectionManager {
             try await clock.sleep(for: delay)
             try ensureCurrent(token)
             do {
-                try await open(tv, credential: credential, factory: factory, token: token)
+                try await open(currentDevice ?? tv, credential: credential, factory: factory, token: token)
                 return
             } catch {
                 guard Self.isRecoverable(error) else { throw error }
@@ -249,46 +250,55 @@ public actor ConnectionManager {
     private func open(
         _ tv: TVDevice, credential: Credential, factory: TVDriverFactory, token: UUID
     ) async throws {
-        let outcome = await withTaskGroup(of: Attempt.self, returning: Attempt.self) { group in
+        let (outcome, standby) = await withTaskGroup(of: Attempt.self) { group in
             group.addTask { await Self.attempt(tv, credential: credential, factory: factory) }
             group.addTask {
                 let browser = factory.makeDriver()
+                var standby: TVDevice?
                 for await candidate in browser.discover() {
                     if Task.isCancelled { break }
                     guard candidate.id == tv.id, candidate.endpoint != tv.endpoint else { continue }
                     let attempt = await Self.attempt(candidate, credential: credential, factory: factory)
-                    if case .failure(let error) = attempt, Self.isRecoverable(error), error as? TVError != .asleep {
-                        continue
+                    switch attempt {
+                    case .standby(let device): standby = device
+                    case .failure(let error) where Self.isRecoverable(error): continue
+                    default: return attempt
                     }
-                    return attempt
                 }
-                return .noCandidate
+                return standby.map(Attempt.standby) ?? .noCandidate
             }
 
             var failure: any Error = TVError.unreachable
+            var standby: TVDevice?
             for await attempt in group {
                 switch attempt {
                 case .ready:
                     group.cancelAll()
-                    return attempt
+                    return (attempt, standby)
+                case .standby(let device):
+                    if standby == nil || device.endpoint != tv.endpoint { standby = device }
+                    if Self.failurePriority(failure) < Self.failurePriority(TVError.asleep) { failure = TVError.asleep }
                 case .failure(let error):
                     if Self.failurePriority(error) >= Self.failurePriority(failure) { failure = error }
                 case .noCandidate:
                     break
                 }
             }
-            return .failure(failure)
+            return (Attempt.failure(failure), standby)
         }
         try ensureCurrent(token)
         switch outcome {
         case .ready(let driver, let device): markReady(driver: driver, tv: device)
-        case .failure(let error): throw error
-        case .noCandidate: throw TVError.unreachable
+        case .failure(let error):
+            if let standby { currentDevice = standby }
+            throw error
+        case .standby, .noCandidate: throw TVError.unreachable
         }
     }
 
     private enum Attempt: Sendable {
         case ready(any TVDriver, TVDevice)
+        case standby(TVDevice)
         case failure(any Error)
         case noCandidate
     }
@@ -302,6 +312,7 @@ public actor ConnectionManager {
             try Task.checkCancellation()
             return .ready(driver, tv)
         } catch {
+            if error as? TVError == .asleep { return .standby(tv) }
             return .failure(error)
         }
     }

@@ -35,6 +35,7 @@ private actor Scenario {
     private(set) var connectCredentials: [Credential] = []
     private(set) var commandSessions: [UUID] = []
     private(set) var wakes: [TVIdentity] = []
+    private(set) var wakeEndpoints: [TVEndpoint] = []
 
     init(
         discovery: [TVDevice] = [],
@@ -69,7 +70,10 @@ private actor Scenario {
         if !sendResults.isEmpty, let error = sendResults.removeFirst() { throw error }
     }
 
-    func wake(_ tv: TVDevice) { wakes.append(tv.id) }
+    func wake(_ tv: TVDevice) {
+        wakes.append(tv.id)
+        wakeEndpoints.append(tv.endpoint)
+    }
 }
 
 private struct ScenarioDriver: TVDriver {
@@ -225,6 +229,26 @@ private func manager(
     #expect(await clock.sleeps.isEmpty)
     var states = m.state.makeAsyncIterator()
     #expect(await states.next() == .needsRepair)
+}
+
+@Test func standbyRediscoveryRetainsNewEndpointForAutomaticAndManualWake() async throws {
+    let capabilities: TVCapabilities = [.remoteKeys, .networkWake]
+    let saved = tv(capabilities: capabilities)
+    let moved = tv("192.0.2.11", capabilities: capabilities)
+    let scenario = Scenario(
+        discovery: [moved],
+        connects: [
+            saved.endpoint.host: [.unreachable],
+            moved.endpoint.host: Array(repeating: .asleep, count: 5)
+        ]
+    )
+    let m = manager(scenario)
+    await #expect(throws: TVError.asleep) { try await m.connect(saved) }
+    #expect(await m.currentDevice == moved)
+    #expect(await scenario.connects.filter { $0 == saved.endpoint }.count == 1)
+    #expect(await scenario.wakeEndpoints == [moved.endpoint])
+    try await m.wake()
+    #expect(await scenario.wakeEndpoints == [moved.endpoint, moved.endpoint])
 }
 
 @Test func missedKeepAliveRecoversAndDisconnectClearsSelection() async throws {
