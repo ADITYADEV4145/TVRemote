@@ -34,6 +34,7 @@ final class RemoteViewModel {
     private var demoCredentials: [TVDevice.ID: String] = [:]
     private var unavailableChannelTVs: Set<TVDevice.ID> = []
     private var keyboardDrafts: [TVDevice.ID: String] = [:]
+    private var wakeInFlight = false
     private var messageGeneration = 0
     @ObservationIgnored private var stateTask: Task<Void, Never>?
     @ObservationIgnored private var pairingTask: Task<Bool, Never>?
@@ -62,7 +63,7 @@ final class RemoteViewModel {
         savedDevices = live.savedDevices
         let updates = live.state
         stateTask = Task { [weak self] in
-            for await update in updates { self?.state = ConnectionState(update) }
+            for await _ in updates { self?.state = ConnectionState(live.manager.currentState) }
         }
     }
 
@@ -111,12 +112,14 @@ final class RemoteViewModel {
         get { currentDevice.flatMap { keyboardDrafts[$0.id] } ?? "" }
         set { if let id = currentDevice?.id { keyboardDrafts[id] = newValue } }
     }
-    var canPower: Bool { canControl || (!isConnecting && canWake) }
+    var canPower: Bool { !wakeInFlight && (canControl || (!isConnecting && canWake)) }
     private var canWake: Bool {
         guard let device = currentDevice else { return false }
         if live == nil { return state == .asleep }
+        let capabilities = live?.device(device.id)?.capabilities ?? []
+        if state == .connecting || state == .recovering { return capabilities.contains(.networkWake) }
         guard state == .asleep || state == .degraded else { return false }
-        return live?.device(device.id)?.capabilities.intersection([.networkWake, .controlWake]).isEmpty == false
+        return !capabilities.intersection([.networkWake, .controlWake]).isEmpty
     }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
     var supportsManualAddress: Bool { true }
@@ -126,7 +129,7 @@ final class RemoteViewModel {
         guard let live else { return }
         while !Task.isCancelled {
             do { try await clock.sleep(for: .seconds(2)) } catch { return }
-            guard currentDevice != nil, !isConnecting, state == .ready || state == .degraded,
+            guard currentDevice != nil, !isConnecting, !wakeInFlight, state == .ready || state == .degraded,
                   commandTail == nil, healthCheck == nil else { continue }
             let check = Task {
                 try? await live.manager.checkConnection()
@@ -307,13 +310,20 @@ final class RemoteViewModel {
         let changesChannel = key == .channelUp || key == .channelDown
         if changesChannel && !canChangeChannel { return }
         if key == .power, canWake, !isConnecting, let device = currentDevice {
+            guard !wakeInFlight else { return }
+            if let live, live.device(device.id)?.capabilities.contains(.networkWake) == true {
+                wakeInFlight = true
+                defer { wakeInFlight = false }
+                await runCommand("Wake TV", feedback: "Wake signal sent", waitForHealthCheck: false) {
+                    try await live.manager.wake()
+                }
+                return
+            }
             await perform("Wake TV", feedback: "Waking \(device.name)") { [self] in
                 if let live {
                     if live.device(device.id)?.capabilities.contains(.controlWake) == true {
                         try await live.manager.send(.powerOn)
-                    } else {
-                        try await live.manager.wake()
-                    }
+                    } else { throw TVError.notSupported }
                 } else {
                     try await driver?.wake(device)
                 }
@@ -528,10 +538,10 @@ final class RemoteViewModel {
         if commandSequence == sequence { commandTail = nil }
     }
 
-    private func runCommand(_ command: String, feedback message: String?,
+    private func runCommand(_ command: String, feedback message: String?, waitForHealthCheck: Bool = true,
                             action: @MainActor () async throws -> Void) async {
         let selection = selectionGeneration
-        await healthCheck?.value
+        if waitForHealthCheck { await healthCheck?.value }
         guard selectionGeneration == selection, !isConnecting else { return }
         let generation = messageGeneration
         let deviceID = currentDevice?.id

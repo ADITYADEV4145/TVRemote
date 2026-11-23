@@ -85,6 +85,7 @@ struct RemoteScreen: View {
             HStack {
                 Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
                     .foregroundStyle(RemoteTheme.muted)
+                    .accessibilityHint(connection.canPower && !connection.canControl ? "Power can try to wake this TV." : "")
                 if connection.isDemo {
                     Text("DEMO").font(.caption2.weight(.semibold))
                         .padding(.horizontal, 6).padding(.vertical, 3)

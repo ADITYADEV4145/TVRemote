@@ -26,6 +26,7 @@ public actor ConnectionManager {
 
     public private(set) var currentDevice: TVDevice?
     public nonisolated var state: AsyncStream<ConnectionState> { states.subscribe() }
+    public nonisolated var currentState: ConnectionState { states.latest }
 
     public init(
         drivers: [TVDriverFactory],
