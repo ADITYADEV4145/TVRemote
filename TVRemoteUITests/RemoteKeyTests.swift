@@ -7,7 +7,7 @@ final class RemoteKeyTests: XCTestCase {
         app.buttons["Close"].tap()
         assertAboveTabBar(app.buttons["Talk to your TV"], in: app)
         assertAboveTabBar(app.buttons["Find a TV"], in: app)
-        app.tabBars.buttons["My TVs"].tap()
+        tabBar(in: app).buttons["My TVs"].tap()
         assertAboveTabBar(app.buttons["Add a TV"], in: app)
     }
 
@@ -59,8 +59,13 @@ final class RemoteKeyTests: XCTestCase {
                                    file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(button.waitForExistence(timeout: 5), file: file, line: line)
         XCTAssertTrue(button.isHittable, file: file, line: line)
-        XCTAssertLessThanOrEqual(button.frame.maxY, app.tabBars.firstMatch.frame.minY,
+        XCTAssertLessThanOrEqual(button.frame.maxY, tabBar(in: app).frame.minY,
                                  "The entire action must remain above the floating tab bar.", file: file, line: line)
+    }
+
+    private func tabBar(in app: XCUIApplication) -> XCUIElement {
+        let floating = app.descendants(matching: .any)["primaryTabBar"].firstMatch
+        return floating.exists ? floating : app.tabBars.firstMatch
     }
 
     func testDiscoveryBackReturnsToNetworkThenWelcome() {
@@ -100,7 +105,7 @@ final class RemoteKeyTests: XCTestCase {
         app.buttons["Find TVs"].tap()
         select("Living Room", in: app)
         app.buttons["Open remote"].tap()
-        app.tabBars.buttons["My TVs"].tap()
+        tabBar(in: app).buttons["My TVs"].tap()
         app.buttons["Add a TV"].tap()
         XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Find my TV"].exists)

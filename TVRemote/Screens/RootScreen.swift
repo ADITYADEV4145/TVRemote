@@ -46,6 +46,7 @@ struct RootScreen: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
         TabView(selection: $tab) {
             NavigationStack(path: $remotePath) {
                 RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 }).toolbar(.hidden, for: .navigationBar)
@@ -75,7 +76,6 @@ struct RootScreen: View {
             .toolbar(nativeTabBarVisibility, for: .tabBar)
             .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
             if #available(iOS 26, *) {
                 FloatingTabBar(selection: $tab)
                     .frame(maxWidth: 560)
@@ -83,9 +83,9 @@ struct RootScreen: View {
                     .padding(.top, 6)
                     .padding(.bottom, 8)
                     .frame(maxWidth: .infinity)
-                    .background(RemoteTheme.canvas)
             }
         }
+        .background(RemoteTheme.canvas.ignoresSafeArea(edges: .bottom))
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
         .onAppear {
             if showWelcome && !hasSeenWelcome {
