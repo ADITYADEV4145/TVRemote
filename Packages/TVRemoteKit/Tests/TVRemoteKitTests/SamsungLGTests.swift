@@ -145,12 +145,16 @@ private struct SocketDiscovery: DiscoverySource {
     #expect(off.first?["params"]["DataOfCmd"].string == "KEY_POWEROFF")
 }
 
-@Test func samsungFallsBackToPlainAndRejectsUnauthorizedToken() async throws {
+@Test func samsungSecureProbeDoesNotDowngradeAndExplicitPlainRejectsUnauthorizedToken() async throws {
     let http = SamsungDeviceInfo(port: 8001)
     let unauthorized = SocketTranscript([#"{"event":"ms.channel.unauthorized"}"#])
     let sockets = SocketScript([.success(unauthorized)])
     let driver = SamsungTizenDriver(http: http, sockets: sockets)
-    let tv = try await driver.probe(TVEndpoint(host: "tv.local", port: 8002))
+    await #expect(throws: TVError.unreachable) {
+        try await driver.probe(TVEndpoint(host: "tv.local", port: 8002))
+    }
+    #expect(await http.requests.map { $0.url.port } == [8002])
+    let tv = try await driver.probe(TVEndpoint(host: "tv.local", port: 8001))
     #expect(tv.endpoint.port == 8001)
     await #expect(throws: TVError.credentialRejected) { try await driver.connect(tv, .token("old")) }
     #expect(await unauthorized.closed)
@@ -249,22 +253,24 @@ private struct SocketDiscovery: DiscoverySource {
     #expect(resume[2]["payload"]["id"].string == "netflix")
 }
 
-@Test func lgDiscoverFallsBackToPlainAndRejectsExpiredClientKey() async throws {
+@Test func lgSecureDiscoveryDoesNotDowngradeAndExplicitPlainRejectsExpiredClientKey() async throws {
     let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"original"}}"#
     let probe = SocketTranscript([identity])
     let invalid = SocketTranscript([identity, #"{"id":"register","type":"error","error":"403 forbidden"}"#])
-    let sockets = SocketScript([.failure(.unreachable), .success(probe), .success(invalid)])
+    let sockets = SocketScript([.failure(.unreachable), .failure(.unreachable), .success(probe), .success(invalid)])
     let discovery = SocketDiscovery(endpoint: TVEndpoint(host: "tv.local", port: 3001))
     let driver = LGWebOSDriver(sockets: sockets, discovery: discovery)
     var devices: [TVDevice] = []
     for await device in driver.discover() { devices.append(device) }
-    let tv = try #require(devices.first)
+    #expect(devices.isEmpty)
+    #expect(await sockets.attempts.map { $0.url.port } == [3001, 3001])
+    let tv = try await driver.probe(TVEndpoint(host: "tv.local", port: 3000))
     #expect(tv.endpoint.port == 3000)
     await #expect(throws: TVError.credentialRejected) {
         try await driver.connect(tv, .webOSPlainClientKey("expired", deviceUUID: "original"))
     }
     #expect(await invalid.closed)
-    #expect(await sockets.attempts.map { $0.url.port } == [3001, 3000, 3000])
+    #expect(await sockets.attempts.map { $0.url.port } == [3001, 3001, 3000, 3000])
 }
 
 @Test func lgRejectsReplacementIdentityBeforeSendingClientKey() async throws {

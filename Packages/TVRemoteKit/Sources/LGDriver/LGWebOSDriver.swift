@@ -160,7 +160,7 @@ public actor LGWebOSDriver: TVDriver {
         _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil
     ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         let ports: [UInt16] = credentialed ? [certificate == nil ? 3000 : 3001]
-            : (endpoint.port == 3000 ? [3000, 3001] : [3001, 3000])
+            : (endpoint.port == 3000 ? [3000, 3001] : [3001])
         var last: any Error = TVError.unreachable
         for port in ports {
             let secure = port == 3001

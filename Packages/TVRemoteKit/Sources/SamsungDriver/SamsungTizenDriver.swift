@@ -142,7 +142,7 @@ public actor SamsungTizenDriver: TVDriver {
     private func inspect(
         _ endpoint: TVEndpoint, pairedPort: UInt16? = nil, certificate: Data? = nil
     ) async throws -> TVDevice {
-        let ports: [UInt16] = pairedPort.map { [$0] } ?? (endpoint.port == 8001 ? [8001, 8002] : [8002, 8001])
+        let ports: [UInt16] = pairedPort.map { [$0] } ?? (endpoint.port == 8001 ? [8001, 8002] : [8002])
         var last: any Error = TVError.unreachable
         for port in ports {
             do {
