@@ -154,7 +154,7 @@ private struct ImmediateClock: ConnectionClock {
 
 @Test func reachableRokuStandbyDoesNotTurnAnyCommandIntoWake() async throws {
     let standby = deviceInfo(power: "PowerOff")
-    let transport = Transcript([deviceInfo(), deviceInfo(), standby, standby])
+    let transport = Transcript([deviceInfo(), deviceInfo(), standby, standby, standby])
     let manager = ConnectionManager(
         drivers: [TVDriverFactory(platform: .roku) { RokuECPDriver(http: transport) }],
         credentials: MemoryCredentialStore(), clock: ImmediateClock()
@@ -164,9 +164,25 @@ private struct ImmediateClock: ConnectionClock {
     try await manager.send(.powerOff)
     await #expect(throws: TVError.asleep) { try await manager.send(.volumeUp) }
     try await manager.send(.powerOff)
-    #expect(await transport.requests.map(\.method) == [.get, .get, .get, .get])
+    #expect(await transport.requests.map(\.method) == [.get, .get, .get, .get, .get])
     var states = manager.state.makeAsyncIterator()
     #expect(await states.next() == .asleep)
+}
+
+@Test func rokuPowerOffChecksForPhysicalWakeDespiteCachedStandby() async throws {
+    let standby = deviceInfo(power: "PowerOff")
+    let transport = Transcript([deviceInfo(), deviceInfo(), standby, deviceInfo(), deviceInfo(), HTTPResponse(status: 200)])
+    let manager = ConnectionManager(
+        drivers: [TVDriverFactory(platform: .roku) { RokuECPDriver(http: transport) }],
+        credentials: MemoryCredentialStore(), clock: ImmediateClock()
+    )
+    let tv = try await manager.probe(endpoint, platform: .roku)
+    try await manager.connect(tv)
+    await #expect(throws: TVError.asleep) { try await manager.checkConnection() }
+    try await manager.send(.powerOff)
+    let requests = await transport.requests
+    #expect(requests.map(\.method) == [.get, .get, .get, .get, .get, .post])
+    #expect(requests.last?.url.path == "/keypress/PowerOff")
 }
 
 @Test func ssdpRequiresMatchingSourceAndPlatformFingerprint() {

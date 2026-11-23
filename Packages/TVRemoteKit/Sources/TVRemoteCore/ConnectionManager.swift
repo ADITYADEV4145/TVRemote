@@ -167,14 +167,30 @@ public actor ConnectionManager {
         _ operation: @Sendable (any TVDriver) async throws -> Void
     ) async throws {
         guard !commandInFlight else { throw TVError.busy }
-        if standbyIsSuccess && phase == .asleep { return }
-        guard let tv = currentDevice, let driver, phase == .ready else { throw TVError.notConnected }
+        guard let selected = currentDevice, phase == .ready || (standbyIsSuccess && phase == .asleep) else {
+            throw TVError.notConnected
+        }
         let token = generation
         commandInFlight = true
         defer {
             if generation == token { commandInFlight = false }
         }
 
+        if phase == .asleep {
+            do {
+                let factory = try factory(for: selected.id.platform)
+                let credential = try await loadCredential(for: selected)
+                try ensureCurrent(token)
+                try await open(selected, credential: credential, factory: factory, token: token)
+            } catch {
+                try ensureCurrent(token)
+                fail(error, token: token)
+                if error as? TVError == .asleep { return }
+                throw error
+            }
+        }
+
+        guard let tv = currentDevice, let driver else { throw TVError.notConnected }
         do {
             try await operation(driver)
             try ensureCurrent(token)
