@@ -79,11 +79,12 @@ final class LiveTVSession {
         let device: Device?
         if let selectedID, let selected = known[selectedID] {
             let port = parts.port ?? Int(selected.endpoint.port)
-            guard let value = UInt16(exactly: port), switchPort(value) == selected.id.platform else { throw Failure.address }
+            guard let value = UInt16(exactly: port), value != 0 else { throw Failure.address }
+            guard switchPort(value) == selected.id.platform else { throw Failure.notFound }
             device = try? await manager.probe(TVEndpoint(host: host, port: value), platform: selected.id.platform)
         } else if let port = parts.port {
-            guard let value = UInt16(exactly: port),
-                  let platform = switchPort(value) else { throw Failure.address }
+            guard let value = UInt16(exactly: port), value != 0 else { throw Failure.address }
+            guard let platform = switchPort(value) else { throw Failure.notFound }
             device = try? await manager.probe(TVEndpoint(host: host, port: value), platform: platform)
         } else {
             let preferred = await probe(host, candidates: [(.roku, 8060), (.googleTV, 6466), (.samsung, 8002), (.lg, 3001)])

@@ -426,6 +426,15 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.pairingCompletion, 1)
     }
 
+    func testValidAddressWithUnsupportedPortIsNotAFormatError() async throws {
+        let (connection, _, _, _) = try await liveFixture([.remoteKeys])
+        let found = await connection.find(address: "127.0.0.1:9999")
+        XCTAssertFalse(found)
+        XCTAssertEqual(connection.error, LiveTVSession.Failure.notFound.localizedDescription)
+        _ = await connection.find(address: "127.0.0.1:70000")
+        XCTAssertEqual(connection.error, LiveTVSession.Failure.address.localizedDescription)
+    }
+
     func testBareIPProbesSecureBeforePlainAndExplicitSecureDoesNotFallBack() async throws {
         let host = "192.0.2.42"
         let endpoints: [(TVPlatform, UInt16, UInt16)] = [(.samsung, 8002, 8001), (.lg, 3001, 3000)]
