@@ -266,6 +266,7 @@ final class RemoteViewModel {
 
     func submit(code: String) async -> Bool {
         guard let device = pairingDevice, !isConnecting else { return false }
+        error = nil
         let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
         if let live, let selected = live.device(device.id) {
             guard let reply = codeReply else {
@@ -559,6 +560,7 @@ final class RemoteViewModel {
         pairingDevice = nil
         pairingPrompt = nil
         feedback = nil
+        error = nil
     }
 
     private func connectionFailure(_ error: any Error, for device: TVDevice) -> String {

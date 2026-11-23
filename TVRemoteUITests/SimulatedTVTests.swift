@@ -38,8 +38,20 @@ final class SimulatedTVTests: XCTestCase {
             let code = try await status(brand).pairing_code
             let pin = try XCTUnwrap(code)
             codeField.tap()
-            codeField.typeText(pin)
+            codeField.typeText((pin.hasPrefix("0") ? "1" : "0") + String(pin.dropFirst()))
             app.buttons["Pair TV"].tap()
+            let mismatch = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "didn’t match")).firstMatch
+            XCTAssertTrue(mismatch.waitForExistence(timeout: 10))
+            let pairButton = app.buttons["Pair TV"]
+            XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"),
+                                                                         object: pairButton)], timeout: 10), .completed)
+            let newCode = try await status(brand).pairing_code
+            let newPin = try XCTUnwrap(newCode)
+            codeField.tap()
+            codeField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 6) + newPin)
+            pairButton.tap()
+            XCTAssertTrue(app.buttons["Open remote"].waitForExistence(timeout: 20))
+            XCTAssertFalse(mismatch.exists)
         } else if brand == "samsung" || brand == "lg" {
             let retry = app.buttons["Try again"]
             assertApprovalPending(in: app, retry: retry)
