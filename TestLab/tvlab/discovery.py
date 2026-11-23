@@ -5,6 +5,8 @@ import socket
 from zeroconf import IPVersion, ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
+from .roku import udn as roku_udn
+
 SSDP_GROUP = "239.255.255.250"
 SSDP_TYPES = {
     "roku": ("roku:ecp",),
@@ -34,7 +36,7 @@ class SSDP(asyncio.DatagramProtocol):
             if tv.sleeping:
                 continue
             identity = tv.mac.replace(":", "")
-            udn = f"uuid:roku:ecp:{identity}" if platform == "roku" else f"uuid:lab-{platform}-{identity}"
+            udn = roku_udn(tv) if platform == "roku" else f"uuid:lab-{platform}-{identity}"
             for target in (*types, "upnp:rootdevice", udn):
                 if requested not in (target.lower(), "ssdp:all"):
                     continue

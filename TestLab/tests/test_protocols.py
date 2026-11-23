@@ -53,11 +53,18 @@ async def test_ssdp(lab, target, platforms):
             headers = dict(line.split(": ", 1) for line in reply.splitlines()[1:] if ": " in line)
             location = headers["LOCATION"]
             assert location.startswith(url(lab.address(platform, "http")))
-            if platform != "roku":
-                async with client.get(location) as resp:
-                    root = ET.fromstring(await resp.text())
-                    udn = root.findtext(".//{*}UDN")
-                    assert udn == headers["USN"].split("::")[0]
+            async with client.get(location) as resp:
+                assert resp.status == 200
+                root = ET.fromstring(await resp.text())
+                udn = root.findtext(".//{*}UDN")
+                assert udn == headers["USN"].split("::")[0]
+                if platform == "roku":
+                    assert root.findtext(".//{*}deviceType") == "urn:roku-com:device:player:1-0"
+                    assert root.findtext(".//{*}serviceType") == "urn:roku-com:service:ecp:1"
+                    service_url = root.findtext("{*}URLBase").rstrip("/") + root.findtext(".//{*}SCPDURL")
+                    async with client.get(service_url) as service:
+                        assert service.status == 200
+                        assert ET.fromstring(await service.text()).tag.endswith("}scpd")
 
 
 async def test_bonjour(lab):

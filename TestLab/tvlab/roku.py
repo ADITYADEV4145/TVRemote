@@ -6,6 +6,12 @@ KEYS = set("""Home Rev Fwd Play Select Left Right Down Up Back InstantReplay Inf
 Search Enter FindRemote ChannelUp ChannelDown VolumeDown VolumeMute VolumeUp PowerOff
 PowerOn Power InputTuner InputHDMI1 InputHDMI2 InputHDMI3 InputHDMI4 InputAV1""".split())
 APPS = {"12": "Netflix", "837": "YouTube"}
+DEVICE_TYPE = "urn:roku-com:device:player:1-0"
+SERVICE_TYPE = "urn:roku-com:service:ecp:1"
+
+
+def udn(tv):
+    return f"uuid:roku:ecp:{tv.mac.replace(':', '')}"
 
 
 def xml(root):
@@ -20,9 +26,32 @@ def fields(root, values):
 
 
 def routes(app, tv):
+    async def description(request):
+        root = Element("root", xmlns="urn:schemas-upnp-org:device-1-0")
+        fields(SubElement(root, "specVersion"), {"major": "1", "minor": "0"})
+        SubElement(root, "URLBase").text = f"{request.scheme}://{request.host}/"
+        device = fields(SubElement(root, "device"), {
+            "deviceType": DEVICE_TYPE, "friendlyName": "Lab Roku", "manufacturer": "Roku",
+            "modelName": "Roku TV", "modelNumber": "SIM", "serialNumber": "SIMROKU001",
+            "UDN": udn(tv),
+        })
+        services = SubElement(device, "serviceList")
+        fields(SubElement(services, "service"), {
+            "serviceType": SERVICE_TYPE, "serviceId": "urn:roku-com:serviceId:ecp1",
+            "controlURL": "/", "eventSubURL": "/", "SCPDURL": "/ecp_SCPD.xml",
+        })
+        return xml(root)
+
+    async def service_description(_):
+        root = Element("scpd", xmlns="urn:schemas-upnp-org:service-1-0")
+        fields(SubElement(root, "specVersion"), {"major": "1", "minor": "0"})
+        SubElement(root, "actionList")
+        SubElement(root, "serviceStateTable")
+        return xml(root)
+
     async def device(_):
         return xml(fields(Element("device-info"), {
-            "udn": f"uuid:roku:ecp:{tv.mac.replace(':', '')}", "serial-number": "SIMROKU001",
+            "udn": udn(tv), "serial-number": "SIMROKU001",
             "device-id": "SIMROKU001", "model-name": "Roku TV", "model-number": "SIM",
             "friendly-device-name": "Lab Roku", "user-device-name": "Lab Roku",
             "is-tv": "true", "power-mode": "PowerOn", "supports-find-remote": "true",
@@ -71,6 +100,7 @@ def routes(app, tv):
         return web.Response()
 
     app.add_routes([
+        web.get("/", description), web.get("/ecp_SCPD.xml", service_description),
         web.get("/query/device-info", device), web.get("/query/apps", apps),
         web.get("/query/active-app", active), web.get("/query/media-player", player),
         web.post("/{op:keypress|keydown|keyup}/{key}", send), web.post("/launch/{app_id}", launch),
