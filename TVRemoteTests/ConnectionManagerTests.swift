@@ -84,6 +84,22 @@ final class ConnectionManagerTests: XCTestCase {
         try await store.remove(for: id)
     }
     #endif
+    func testSavedGoogleTVOutageExplainsPairingOptionsWithoutRawError() async throws {
+        let (_, session, tv, driver) = try await liveFixture(platform: .googleTV, [.remoteKeys])
+        try await session.credentials.save(.token("paired"), for: tv.id)
+        let saved = session.save(tv)
+        let reopened = RemoteViewModel(live: session)
+        await driver.goOffline()
+        let connected = await reopened.select(saved)
+        XCTAssertFalse(connected)
+        XCTAssertEqual(reopened.currentDevice?.id, saved.id)
+        XCTAssertTrue(reopened.canTryPairingAgain)
+        XCTAssertTrue(reopened.canForgetAfterConnectionFailure)
+        XCTAssertTrue(reopened.error?.contains("pair again or forget this TV") == true)
+        XCTAssertEqual(RemoteViewModel.describe(TVError.pairingDeclined), "The TV declined the pairing request.")
+        XCTAssertFalse(RemoteViewModel.describe(TVError.credentialStoreFailure(status: -34018)).contains("-34018"))
+    }
+
     func testDiscoveryAndManualAddressUseStableDeviceIdentity() async {
         let connection = RemoteViewModel(driver: MockTVDriver())
         await connection.discover()

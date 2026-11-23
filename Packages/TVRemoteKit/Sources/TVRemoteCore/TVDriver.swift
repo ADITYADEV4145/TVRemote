@@ -129,7 +129,7 @@ public enum ConnectionState: Sendable, Equatable {
 public enum TVError: Error, Sendable, Equatable {
     case notConnected, notSupported, invalidAddress, invalidResponse
     case invalidCommand, busy, timedOut, unreachable, asleep, identityMismatch
-    case credentialRejected, pairingRequired
+    case credentialRejected, pairingRequired, pairingDeclined
     case requestFailed(status: Int)
     case credentialStoreFailure(status: Int)
 }

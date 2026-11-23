@@ -94,7 +94,8 @@ final class RemoteViewModel {
             restoredSelection = false
             currentDevice = nil
         } catch {
-            self.error = Self.describe(error)
+            state = ConnectionState(live.manager.currentState)
+            self.error = connectionFailure(error, for: saved)
         }
     }
 
@@ -240,7 +241,7 @@ final class RemoteViewModel {
             else if let driver { device = try await driver.device(at: address) }
             else { return false }
         } catch {
-            self.error = error.localizedDescription
+            self.error = Self.describe(error)
             isConnecting = false
             return false
         }
@@ -307,6 +308,11 @@ final class RemoteViewModel {
         state == .degraded && currentDevice.flatMap { live?.device($0.id)?.id.platform } == .googleTV
     }
 
+    var canForgetAfterConnectionFailure: Bool {
+        guard let device = currentDevice, savedDevices.contains(where: { $0.id == device.id }) else { return false }
+        return state == .needsRepair || canTryPairingAgain
+    }
+
     func tryPairingAgain() {
         guard canTryPairingAgain, !isConnecting, let live, let device = currentDevice,
               let selected = live.device(device.id) else { return }
@@ -319,7 +325,7 @@ final class RemoteViewModel {
         guard !isConnecting else { return }
         if let live {
             do { try await live.forget(device.id) }
-            catch { self.error = error.localizedDescription; return }
+            catch { self.error = Self.describe(error); return }
         }
         demoCredentials.removeValue(forKey: device.id)
         commandFailures.removeValue(forKey: device.id)
@@ -463,7 +469,7 @@ final class RemoteViewModel {
             feedback = nil
             return true
         } catch {
-            self.error = error.localizedDescription
+            self.error = Self.describe(error)
             return false
         }
     }
@@ -471,7 +477,7 @@ final class RemoteViewModel {
     private func selectLive(_ device: TVDevice, using live: LiveTVSession) async -> Bool {
         guard let selected = live.device(device.id) else { return false }
         isConnecting = true
-        if currentDevice?.id != device.id { currentDevice = nil }
+        currentDevice = savedDevices.first(where: { $0.id == device.id })
         do {
             try await live.manager.connect(selected)
             await didConnect(using: live)
@@ -482,7 +488,8 @@ final class RemoteViewModel {
         } catch TVError.credentialRejected {
             startPairing(device, selected: selected, using: live)
         } catch {
-            self.error = Self.describe(error)
+            state = ConnectionState(live.manager.currentState)
+            self.error = connectionFailure(error, for: device)
             isConnecting = false
         }
         return false
@@ -554,13 +561,34 @@ final class RemoteViewModel {
         feedback = nil
     }
 
-    private static func describe(_ error: any Error) -> String {
+    private func connectionFailure(_ error: any Error, for device: TVDevice) -> String {
+        let message = Self.describe(error)
+        if savedDevices.contains(where: { $0.id == device.id }),
+           live?.device(device.id)?.id.platform == .googleTV {
+            return "\(message) If reconnecting doesn’t work, open Fix connection to pair again or forget this TV and add it again."
+        }
+        return message
+    }
+
+    static func describe(_ error: any Error) -> String {
         switch error as? TVError {
-        case .invalidCommand: "That code didn’t match. Check the code shown on your TV."
+        case .notConnected: "Connect to your TV and try again."
+        case .invalidAddress: "Enter a TV’s IP address, optionally followed by its control port."
+        case .invalidResponse: "The TV didn’t send the expected response. Try again."
+        case .invalidCommand: "The request couldn’t be sent to this TV."
+        case .busy: "The TV is already handling a request. Try again in a moment."
         case .timedOut, .unreachable: "The TV didn’t respond. Check that it is on and connected."
         case .notSupported: "This command isn’t available for this connection."
+        case .asleep: "The TV is asleep. Wake it and try again."
+        case .identityMismatch: "This connection doesn’t match the saved TV."
         case .credentialRejected, .pairingRequired: "Pair again with the TV to continue."
-        default: error.localizedDescription
+        case .pairingDeclined: "The TV declined the pairing request."
+        case .requestFailed: "The TV couldn’t complete the request. Try again."
+        case .credentialStoreFailure: "The app couldn’t access the saved pairing on this iPhone. Try again."
+        case nil:
+            if let failure = error as? LiveTVSession.Failure { failure.localizedDescription }
+            else if let failure = error as? MockTVDriver.Failure { failure.localizedDescription }
+            else { "The connection couldn’t be completed. Try again." }
         }
     }
 

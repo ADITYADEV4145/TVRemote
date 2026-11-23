@@ -232,6 +232,18 @@ private func makeDriver(
     #expect(await transport.openings.map(\.endpoint) == [pairingEndpoint, pairingEndpoint, saved, saved])
 }
 
+@Test func googleTVReportsDeclinedPairingBeforeRequestingACode() async throws {
+    let pair = TranscriptTLSStream(hex("05 0802109003"))
+    let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair)])
+    let driver = makeDriver(transport)
+    let tv = try await driver.probe(saved)
+    await #expect(throws: TVError.pairingDeclined) {
+        try await driver.pair(tv) { _ in .code("4A1234") }
+    }
+    #expect(await pair.writes.count == 1)
+    #expect(await pair.closed)
+}
+
 @Test func googleTVRejectsInvalidCodeBeforeItSendsASecret() async throws {
     let pair = TranscriptTLSStream(pairingReplies)
     let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair)])
