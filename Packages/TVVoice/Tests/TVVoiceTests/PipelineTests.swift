@@ -55,6 +55,18 @@ final class PipelineTests: XCTestCase {
         XCTAssertLessThan(ContinuousClock.now - start, .seconds(1))
     }
 
+    func testOutOfRangeModelNumbersAreRejected() {
+        let catalog = AppCatalog.standard
+        for reply in [
+            #"{"action":"seek","seconds":1e300}"#,
+            #"{"action":"seek","seconds":-9223372036854775808}"#,
+            #"{"action":"volume","level":99999999999999999999}"#,
+            #"{"action":"key","key":"down","times":1e20}"#,
+        ] {
+            XCTAssertNil(LanguageModelInterpreter.decode(reply, catalog: catalog), reply)
+        }
+    }
+
     func testModelCannotLaunchUnknownApps() async {
         let model = StubModel(#"{"action":"launch","app":"not-an-app"}"#)
         let pipeline = VoicePipeline(languageModel: LanguageModelInterpreter(backend: model))

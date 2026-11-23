@@ -76,7 +76,7 @@ public struct LanguageModelInterpreter: Sendable {
 
         func int(_ key: String) -> Int? {
             if let n = json[key] as? Int { return n }
-            if let d = json[key] as? Double { return Int(d) }
+            if let d = json[key] as? Double { return d.isFinite && abs(d) < 1_000_000 ? Int(d) : nil }
             if let s = json[key] as? String { return Int(s) }
             return nil
         }
@@ -92,16 +92,14 @@ public struct LanguageModelInterpreter: Sendable {
         switch action {
         case "key":
             guard let raw = string("key"), let key = VoiceKey(rawValue: raw) else { return nil }
-            let times = int("times") ?? 1
-            guard (1...20).contains(times) else { return nil }
+            guard let times = json["times"] == nil ? 1 : int("times"), (1...20).contains(times) else { return nil }
             return .command(.key(key, times: times))
         case "volume":
             if let level = int("level") {
                 guard (0...100).contains(level) else { return nil }
                 return .command(.volume(.set(level)))
             }
-            let steps = int("steps") ?? 1
-            guard (1...20).contains(steps) else { return nil }
+            guard let steps = json["steps"] == nil ? 1 : int("steps"), (1...20).contains(steps) else { return nil }
             switch string("direction") {
             case "up": return .command(.volume(.up(steps)))
             case "down": return .command(.volume(.down(steps)))
@@ -130,7 +128,7 @@ public struct LanguageModelInterpreter: Sendable {
             guard let query = string("query") else { return nil }
             return .command(.search(query: query.lowercased(), app: app("app")))
         case "seek":
-            guard let seconds = int("seconds"), seconds != 0, abs(seconds) <= 3600 else { return nil }
+            guard let seconds = int("seconds"), seconds != 0, (-3600...3600).contains(seconds) else { return nil }
             return .command(.seek(seconds: seconds))
         case "input":
             if let n = int("hdmi"), (1...8).contains(n) { return .command(.input(.hdmi(n))) }
