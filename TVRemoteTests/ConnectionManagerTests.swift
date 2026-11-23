@@ -77,6 +77,8 @@ final class ConnectionManagerTests: XCTestCase {
         await waitForState(.ready, on: connection)
         await connection.movePointer(x: 3, y: -2)
         XCTAssertEqual(driver.commands.last, .pointer(3, -2))
+        XCTAssertEqual(connection.recentCommands.first?.deviceID, MockTVDriver.devices[1].id)
+        XCTAssertTrue(connection.recentCommands.dropFirst().allSatisfy { $0.deviceID == MockTVDriver.devices[0].id })
     }
 
     func testPowerSleepsAndWakesTheSelectedDevice() async {

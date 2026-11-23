@@ -1,6 +1,18 @@
 import XCTest
 
 final class RemoteKeyTests: XCTestCase {
+    func testDiscoveryBackReturnsToNetworkThenWelcome() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Find my TV"].tap()
+        app.buttons["Find TVs"].tap()
+        XCTAssertTrue(app.staticTexts["Find your TV"].waitForExistence(timeout: 5))
+        app.buttons["Back"].tap()
+        XCTAssertTrue(app.buttons["Find TVs"].waitForExistence(timeout: 5))
+        app.buttons["Back"].tap()
+        XCTAssertTrue(app.buttons["Find my TV"].waitForExistence(timeout: 5))
+    }
+
     func testPowerRespondsOutsideTheIcon() {
         continueAfterFailure = false
         let app = launchSetup()
