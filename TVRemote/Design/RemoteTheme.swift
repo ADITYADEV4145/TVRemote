@@ -183,7 +183,8 @@ struct SettingsToggle: View {
                 DetailRow(icon: icon, title: title, detail: detail).accessibilityHidden(true)
                 Toggle(title, isOn: $isOn).labelsHidden()
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .accessibilityHint(detail)
+                    .accessibilityLabel("\(title). \(detail)")
+                    .accessibilityIdentifier(title)
             }
         } else {
             Toggle(isOn: $isOn) { DetailRow(icon: icon, title: title, detail: detail) }
