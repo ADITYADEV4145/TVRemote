@@ -57,7 +57,10 @@ public struct ContentSearchInterpreter: Sendable {
         // Drop connective words but keep titles that start with them ("Movie 43", "Of Mice and Men").
         while q.first == "for" { q.removeFirst() }
         if q.starts(with: ["episodes", "of"]) { q.removeFirst(2) }
-        if q.count > 2, ["show", "movie", "film", "series"].contains(q[0]), ["called", "named"].contains(q[1]) { q.removeFirst(2) }
+        if q.count > 1, ["show", "movie", "film", "series"].contains(q[0]), !(q.count == 2 && Int(q[1]) != nil) {
+            q.removeFirst()
+            if q.count > 1, ["called", "named"].contains(q[0]) { q.removeFirst() }
+        }
         guard !q.isEmpty else { return nil }
         if Self.vagueOpeners.contains(q[0]) {
             guard allowVague else { return nil }
