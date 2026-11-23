@@ -123,7 +123,7 @@ struct RemoteScreen: View {
                 .labelStyle(.iconOnly).buttonStyle(ControlKeyStyle(clear: true))
         }
         .background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
-        .disabled(!connection.canControl)
+        .disabled(up == .channelUp ? !connection.canChangeChannel : !connection.canControl)
     }
 
     private func press(_ key: RemoteKey) {

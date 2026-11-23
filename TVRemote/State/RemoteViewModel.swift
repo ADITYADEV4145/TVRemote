@@ -32,6 +32,7 @@ final class RemoteViewModel {
     var approvalResponseDelay: Duration?
     #endif
     private var demoCredentials: [TVDevice.ID: String] = [:]
+    private var unavailableChannelTVs: Set<TVDevice.ID> = []
     private var messageGeneration = 0
     @ObservationIgnored private var stateTask: Task<Void, Never>?
     @ObservationIgnored private var pairingTask: Task<Bool, Never>?
@@ -66,6 +67,9 @@ final class RemoteViewModel {
     deinit { stateTask?.cancel() }
 
     var canControl: Bool { state == .ready && currentDevice != nil && !isConnecting }
+    var canChangeChannel: Bool {
+        canControl && currentDevice.map { !unavailableChannelTVs.contains($0.id) } == true
+    }
     var canSearch: Bool {
         guard canControl, let device = currentDevice else { return false }
         if let live { return live.device(device.id)?.capabilities.contains(.search) == true }
@@ -242,6 +246,8 @@ final class RemoteViewModel {
     }
 
     func send(_ key: RemoteKey) async {
+        let changesChannel = key == .channelUp || key == .channelDown
+        if changesChannel && !canChangeChannel { return }
         if key == .power, canWake, !isConnecting, let device = currentDevice {
             await perform("Wake TV", feedback: "Waking \(device.name)") { [self] in
                 if let live {
@@ -256,8 +262,15 @@ final class RemoteViewModel {
             }
         } else if canControl {
             await perform(key.commandTitle) { [self] in
-                if let live { try await live.manager.send(key.wireKey) }
-                else { try await driver?.send(key) }
+                guard !changesChannel || canChangeChannel else { throw TVError.notSupported }
+                let deviceID = currentDevice?.id
+                do {
+                    if let live { try await live.manager.send(key.wireKey) }
+                    else { try await driver?.send(key) }
+                } catch TVError.notSupported where changesChannel {
+                    if let deviceID { unavailableChannelTVs.insert(deviceID) }
+                    throw TVError.notSupported
+                }
             }
         }
     }

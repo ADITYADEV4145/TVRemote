@@ -32,9 +32,11 @@ private actor LiveFixtureDriver: TVDriver {
     private let firstSend = AsyncStream<Void>.makeStream()
     private let release = AsyncStream<Void>.makeStream()
     private var holdFirstSend = false
+    private var channelAvailable = true
 
     func goOffline() { online = false }
     func goOnline() { online = true }
+    func disableChannel() { channelAvailable = false }
     func holdNextSend() { holdFirstSend = true }
     func waitForSend() async { for await _ in firstSend.stream { break } }
     func releaseSend() { release.continuation.finish() }
@@ -53,6 +55,7 @@ private actor LiveFixtureDriver: TVDriver {
     func send(_ key: TVRemoteCore.RemoteKey) async throws {
         try requireOnline()
         keys.append(key)
+        if !channelAvailable && (key == .channelUp || key == .channelDown) { throw TVError.notSupported }
         if holdFirstSend {
             holdFirstSend = false
             firstSend.continuation.yield(())
@@ -243,6 +246,22 @@ final class ConnectionManagerTests: XCTestCase {
         await waitForState(.ready, on: connection)
         let keys = await driver.keys
         XCTAssertEqual(keys, [.powerOn])
+    }
+
+    func testRejectedChannelCommandDisablesOnlyTheChannelRocker() async throws {
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
+        try await session.credentials.save(.token("paired"), for: device.id)
+        let connected = await connection.select(session.remember(device))
+        XCTAssertTrue(connected)
+        await driver.disableChannel()
+        XCTAssertTrue(connection.canChangeChannel)
+        await connection.send(.channelUp)
+        XCTAssertFalse(connection.canChangeChannel)
+        XCTAssertTrue(connection.canControl)
+        await connection.send(.channelDown)
+        await connection.send(.volumeUp)
+        let keys = await driver.keys
+        XCTAssertEqual(keys, [.channelUp, .volumeUp])
     }
 
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
