@@ -108,7 +108,7 @@ struct SetupScreen: View {
         switch page {
         case .welcome:
             Button("Find my TV") { page = .network }.buttonStyle(PrimaryActionStyle())
-            NavigationLink("Check compatibility") { CompatibilityScreen() }.buttonStyle(SecondaryActionStyle())
+            NavigationLink("Supported TVs") { CompatibilityScreen() }.buttonStyle(SecondaryActionStyle())
         case .network:
             Button("Find TVs") { page = .discovery }.buttonStyle(PrimaryActionStyle())
             Button("Not now", action: connected).buttonStyle(SecondaryActionStyle())
@@ -116,7 +116,7 @@ struct SetupScreen: View {
             if connection.supportsManualAddress {
                 Button("Enter IP address") { page = .manual }.buttonStyle(SecondaryActionStyle())
             }
-            NavigationLink("Check compatibility") { CompatibilityScreen() }.frame(minHeight: 44)
+            NavigationLink("Supported TVs") { CompatibilityScreen() }.frame(minHeight: 44)
         default:
             EmptyView()
         }
