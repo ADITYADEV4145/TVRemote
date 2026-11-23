@@ -1,5 +1,27 @@
 import XCTest
 @testable import TVRemote
+import TVRemoteKit
+
+private actor LiveFixtureDriver: TVDriver {
+    nonisolated var state: AsyncStream<TVRemoteCore.ConnectionState> { AsyncStream { $0.finish() } }
+    private var online = true
+    private(set) var wakes = 0
+
+    func goOffline() { online = false }
+    nonisolated func discover() -> AsyncStream<TVRemoteCore.TVDevice> { AsyncStream { $0.finish() } }
+    func probe(_ endpoint: TVEndpoint) async throws -> TVRemoteCore.TVDevice { throw TVError.unreachable }
+    func pair(_ tv: TVRemoteCore.TVDevice, prompt: PairingPromptHandler) async throws -> Credential { .token("paired") }
+    func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws { try requireOnline() }
+    func send(_ key: TVRemoteCore.RemoteKey) async throws { try requireOnline() }
+    func launch(_ app: TVRemoteCore.AppID) async throws { throw TVError.notSupported }
+    func search(_ query: String) async throws { throw TVError.notSupported }
+    func wake(_ tv: TVRemoteCore.TVDevice) async {
+        wakes += 1
+        online = true
+    }
+    func keepAlive() async throws { try requireOnline() }
+    private func requireOnline() throws { if !online { throw TVError.unreachable } }
+}
 
 @MainActor
 final class ConnectionManagerTests: XCTestCase {
@@ -98,6 +120,46 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(driver.commands, [.key(.power), .wake(device.id)])
     }
 
+    func testPowerWakesAnOfflineWakeCapableTV() async throws {
+        for platform in [TVPlatform.samsung, .lg] {
+            let (connection, session, device, driver) = try await liveFixture(platform: platform, [.remoteKeys, .networkWake])
+            try await session.credentials.save(.token("paired"), for: device.id)
+            let connected = await connection.select(session.remember(device))
+            XCTAssertTrue(connected)
+            await driver.goOffline()
+            do {
+                try await session.manager.checkConnection()
+                XCTFail("The standby TV should not respond to its control connection.")
+            } catch TVError.unreachable {}
+            await waitForState(.degraded, on: connection)
+            XCTAssertFalse(connection.canControl)
+            XCTAssertTrue(connection.canPower)
+            await connection.send(.power)
+            await waitForState(.ready, on: connection)
+            XCTAssertTrue(connection.canControl)
+            let wakes = await driver.wakes
+            XCTAssertEqual(wakes, 1)
+        }
+    }
+
+    private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities) async throws
+        -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
+        let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),
+                                          name: "TV", endpoint: TVEndpoint(host: "tv.local", port: 3001),
+                                          capabilities: capabilities)
+        let driver = LiveFixtureDriver()
+        let credentials = MemoryCredentialStore()
+        let manager = TVRemoteCore.ConnectionManager(
+            drivers: [TVDriverFactory(platform: platform) { driver }], credentials: credentials,
+            retryDelays: [.zero]
+        )
+        let suite = "TVRemoteTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let session = LiveTVSession(defaults: defaults, credentials: credentials, manager: manager)
+        return (RemoteViewModel(live: session), session, device, driver)
+    }
+
     func testForgettingTheActiveTVDisconnectsAndRequiresPairingAgain() async {
         let driver = MockTVDriver()
         let connection = RemoteViewModel(driver: driver)
@@ -138,7 +200,7 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.recentCommands.map(\.title), ["TV search"])
     }
 
-    private func waitForState(_ state: ConnectionState, on connection: RemoteViewModel) async {
+    private func waitForState(_ state: TVRemote.ConnectionState, on connection: RemoteViewModel) async {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while connection.state != state && ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))

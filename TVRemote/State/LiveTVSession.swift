@@ -13,10 +13,11 @@ final class LiveTVSession {
     private let savedKey = "TVRemoteKit.savedDevices"
 
     init(defaults: UserDefaults = .standard,
-         credentials: any CredentialStore = TVRemoteKit.defaultCredentialStore()) {
+         credentials: any CredentialStore = TVRemoteKit.defaultCredentialStore(),
+         manager: TVRemoteCore.ConnectionManager? = nil) {
         self.defaults = defaults
         self.credentials = credentials
-        manager = TVRemoteKit.makeManager(
+        self.manager = manager ?? TVRemoteKit.makeManager(
             discovery: LocalDiscoverySource(enableSubnetProbe: true),
             credentials: credentials
         )

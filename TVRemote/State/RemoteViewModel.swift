@@ -64,7 +64,13 @@ final class RemoteViewModel {
     deinit { stateTask?.cancel() }
 
     var canControl: Bool { state == .ready && currentDevice != nil && !isConnecting }
-    var canPower: Bool { !isConnecting && currentDevice != nil && (state == .ready || state == .asleep) }
+    var canPower: Bool { canControl || (!isConnecting && canWake) }
+    private var canWake: Bool {
+        guard let device = currentDevice else { return false }
+        if live == nil { return state == .asleep }
+        return (state == .asleep || state == .degraded)
+            && live?.device(device.id)?.capabilities.contains(.networkWake) == true
+    }
     var supportsPointer: Bool { currentDevice?.supportsPointer == true && driver != nil }
     var supportsManualAddress: Bool { true }
     var awaitingTVApproval: Bool { pairingPrompt == .approval && isConnecting }
@@ -226,7 +232,7 @@ final class RemoteViewModel {
     }
 
     func send(_ key: RemoteKey) async {
-        if key == .power, state == .asleep, !isConnecting, let device = currentDevice {
+        if key == .power, canWake, !isConnecting, let device = currentDevice {
             await perform("Wake TV", feedback: "Waking \(device.name)") {
                 if let live { try await live.manager.wake() }
                 else { try await driver?.wake(device) }
