@@ -119,22 +119,31 @@ struct RemoteScreen: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout())
+        return VStack(alignment: .leading, spacing: 4) {
             Text(connection.currentDevice?.name ?? "Your TV remote")
                 .font(RemoteTheme.title).accessibilityAddTraits(.isHeader)
-            HStack {
-                Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
-                    .foregroundStyle(RemoteTheme.muted)
-                    .accessibilityHint(connection.canPower && !connection.canControl ? "Power can try to wake this TV." : "")
-                if connection.isDemo {
-                    Text("DEMO").font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 6).padding(.vertical, 3)
-                        .background(RemoteTheme.raised, in: Capsule())
+            layout {
+                HStack {
+                    Text(connection.isConnecting ? "Connecting" : connection.state.rawValue)
+                        .foregroundStyle(RemoteTheme.muted)
+                        .accessibilityHint(connection.canPower && !connection.canControl ? "Power can try to wake this TV." : "")
+                    if connection.isDemo {
+                        Text("DEMO").font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6).padding(.vertical, 3)
+                            .background(RemoteTheme.raised, in: Capsule())
+                    }
                 }
-                Spacer()
+                if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 if [.recovering, .degraded, .needsRepair, .asleep].contains(connection.state) {
                     NavigationLink("Fix connection", value: RootScreen.RemoteDestination.diagnostics)
-                        .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+                        .font(.subheadline.weight(.semibold))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+                               minHeight: 44, alignment: .leading)
                 }
             }
             .font(.subheadline)

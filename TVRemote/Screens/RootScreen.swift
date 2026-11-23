@@ -33,22 +33,26 @@ struct RootScreen: View {
                         DiagnosticsScreen(openRemote: returnToRemote)
                     }
             }
+            .modifier(MatchingTabAppearance())
             .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
 
             NavigationStack {
                 AppsScreen(setup: { sheet = .setup }).toolbar(.hidden, for: .navigationBar)
             }
+            .modifier(MatchingTabAppearance())
             .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
 
             NavigationStack {
                 DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
                     .toolbar(.hidden, for: .navigationBar)
             }
+            .modifier(MatchingTabAppearance())
             .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
 
             NavigationStack {
                 SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
             }
+            .modifier(MatchingTabAppearance())
             .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
         }
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
@@ -79,6 +83,18 @@ struct RootScreen: View {
         sheet = nil
         remotePath.removeAll()
         tab = .remote
+    }
+}
+
+/// Update the native bar's preference when this tab's resolved appearance changes.
+/// Keeping the TabView's identity preserves selection and navigation state.
+private struct MatchingTabAppearance: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .toolbarColorScheme(colorScheme, for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
     }
 }
 
