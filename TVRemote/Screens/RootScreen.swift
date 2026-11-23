@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @AppStorage("appearance") private var appearance = "System"
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @State private var tab = Tab.remote

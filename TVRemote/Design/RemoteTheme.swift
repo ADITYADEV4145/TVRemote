@@ -139,7 +139,7 @@ struct PrimaryActionStyle: ButtonStyle {
 }
 
 struct ConnectionMessage: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
 
     var body: some View {
         if let error = connection.error {

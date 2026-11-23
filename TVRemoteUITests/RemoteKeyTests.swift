@@ -65,7 +65,7 @@ final class RemoteKeyTests: XCTestCase {
 
     private func launchSetup() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-hasSeenWelcome", "NO", "-appearance", "Light", "-largeControls", "NO"]
+        app.launchArguments = ["-demo", "-hasSeenWelcome", "NO", "-appearance", "Light", "-largeControls", "NO"]
         app.launch()
         return app
     }

@@ -1,15 +1,34 @@
 import SwiftUI
+import TVRemoteKit
 
 @main
 struct TVRemoteApp: App {
-    @State private var connection = ConnectionManager(driver: MockTVDriver(), isDemo: true)
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var connection = makeConnection()
 
     var body: some Scene {
         WindowGroup {
             appRoot
                 .environment(connection)
                 .tint(RemoteTheme.accent)
+                .task(id: scenePhase) {
+                    if scenePhase == .active { await connection.monitor() }
+                }
         }
+    }
+
+    private static func makeConnection() -> RemoteViewModel {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demo") {
+            return RemoteViewModel(driver: MockTVDriver())
+        }
+        if ProcessInfo.processInfo.arguments.contains("-lab-ui-test"),
+           let preferences = UserDefaults(suiteName: "TVRemoteLabUITests") {
+            preferences.removePersistentDomain(forName: "TVRemoteLabUITests")
+            return RemoteViewModel(live: LiveTVSession(defaults: preferences, credentials: MemoryCredentialStore()))
+        }
+        #endif
+        return RemoteViewModel(live: LiveTVSession())
     }
 
     @ViewBuilder private var appRoot: some View {

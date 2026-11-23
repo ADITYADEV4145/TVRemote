@@ -1,11 +1,10 @@
-import TVDriverKit
 import XCTest
 @testable import TVRemote
 
 @MainActor
 final class ConnectionManagerTests: XCTestCase {
     func testDiscoveryAndManualAddressUseStableDeviceIdentity() async {
-        let connection = ConnectionManager(driver: MockTVDriver())
+        let connection = RemoteViewModel(driver: MockTVDriver())
         await connection.discover()
         await connection.discover()
         XCTAssertEqual(connection.devices, MockTVDriver.devices)
@@ -22,7 +21,7 @@ final class ConnectionManagerTests: XCTestCase {
     }
 
     func testPairingCodeIsRequiredOnceAndInvalidCodeLeavesPairingOpen() async {
-        let connection = ConnectionManager(driver: MockTVDriver())
+        let connection = RemoteViewModel(driver: MockTVDriver())
         let livingRoom = MockTVDriver.devices[0]
         let bedroom = MockTVDriver.devices[1]
 
@@ -52,7 +51,7 @@ final class ConnectionManagerTests: XCTestCase {
 
     func testCommandsOnlyReachDriverWhenSupportedAndConnected() async {
         let driver = MockTVDriver()
-        let connection = ConnectionManager(driver: driver)
+        let connection = RemoteViewModel(driver: driver)
         let app = AppID(rawValue: "netflix")
 
         await connection.send(.home)
@@ -83,7 +82,7 @@ final class ConnectionManagerTests: XCTestCase {
 
     func testPowerSleepsAndWakesTheSelectedDevice() async {
         let driver = MockTVDriver()
-        let connection = ConnectionManager(driver: driver)
+        let connection = RemoteViewModel(driver: driver)
         let device = MockTVDriver.devices[0]
 
         _ = await connection.select(device)
@@ -101,7 +100,7 @@ final class ConnectionManagerTests: XCTestCase {
 
     func testForgettingTheActiveTVDisconnectsAndRequiresPairingAgain() async {
         let driver = MockTVDriver()
-        let connection = ConnectionManager(driver: driver)
+        let connection = RemoteViewModel(driver: driver)
         let bedroom = MockTVDriver.devices[1]
 
         _ = await connection.select(bedroom)
@@ -126,7 +125,7 @@ final class ConnectionManagerTests: XCTestCase {
     }
 
     func testClearingMessagesLeavesTheCommandHistoryIntact() async {
-        let connection = ConnectionManager(driver: MockTVDriver())
+        let connection = RemoteViewModel(driver: MockTVDriver())
         _ = await connection.select(MockTVDriver.devices[0])
         await waitForState(.ready, on: connection)
         await connection.search("Movie night")
@@ -139,7 +138,7 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.recentCommands.map(\.title), ["TV search"])
     }
 
-    private func waitForState(_ state: ConnectionState, on connection: ConnectionManager) async {
+    private func waitForState(_ state: ConnectionState, on connection: RemoteViewModel) async {
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while connection.state != state && ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(10))

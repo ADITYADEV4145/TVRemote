@@ -1,8 +1,7 @@
 import SwiftUI
-import TVDriverKit
 
 struct KeyboardScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @SceneStorage("keyboardDraft") private var savedQuery = ""
     @Environment(\.isDesignPreview) private var isDesignPreview
     @State private var previewQuery = ""
@@ -59,7 +58,7 @@ struct RemoteAppItem: Identifiable {
 }
 
 struct AppsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @AppStorage("favoriteTVApps") private var favorites = ""
     @State private var query = ""
     var forceUnavailable = false
@@ -180,7 +179,7 @@ struct FavoritesScreen: View {
 }
 
 struct PointerSurface: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
 
     var body: some View {
         VStack(spacing: 12) {

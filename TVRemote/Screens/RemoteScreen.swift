@@ -1,8 +1,7 @@
 import SwiftUI
-import TVDriverKit
 
 struct RemoteScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("largeControls") private var largeControls = false
     @AppStorage("hapticsEnabled") private var haptics = true

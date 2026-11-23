@@ -6,19 +6,46 @@ A native iPhone remote for Wi-Fi-enabled TVs.
 
 Open `TVRemote.xcodeproj`, select the **TVRemote** scheme and an iPhone simulator, then run. The minimum deployment target is iOS 17. The project builds with Xcode 26.6 using the Swift 5 language mode. To regenerate the project after adding files, run `xcodegen generate`.
 
-On first run, choose **Find my TV → Find TVs**. Living Room connects without a code; Bedroom accepts `123456` and supports the touchpad. Successful pairing opens a confirmation, then the free Remote. Both TVs are simulated in-process: the app does not access the network, request device permissions, record audio or control hardware. The clearly labeled demo catalog is not a list of installed apps. Pairings are kept in memory; favorites, appearance, haptics, large-controls preference and scene drafts persist on the phone.
+On first run, choose **Find my TV → Find TVs**, then allow Local Network access. Select a discovered TV, or use **Enter IP address** with an optional control port. Roku connects without a code; Google TV shows a code to enter; Samsung and LG require approval on the TV. Successful setup opens a confirmation, then the Remote. Credentials are stored in Keychain; return to **My TVs** to reconnect to a previously paired TV.
+
+To use the isolated in-app demo instead, add the `-demo` launch argument in a Debug build. Living Room connects without a code; Bedroom accepts `123456` and supports the touchpad. Demo devices never access the network.
 
 ```sh
 xcodebuild -scheme TVRemote -destination 'platform=iOS Simulator,name=iPhone 17' build
 xcodebuild -scheme TVRemote -destination 'platform=iOS Simulator,name=iPhone 17' test
 ```
 
-- `TVDriverKit/` is the plan’s eight-member `TVDriver` contract and its value types. Code entry, manual IP lookup and pointer movement are optional capabilities, not additions to the contract.
-- `TVRemote/State/` adapts the injected driver to SwiftUI and contains the demo driver. The app composition root is `TVRemoteApp.swift`; shipping integration needs the real platform driver, its connection coordinator and secure credential storage.
+- [`Packages/TVRemoteKit/`](Packages/TVRemoteKit/) owns the driver contract, discovery, pairing and reconnect logic.
+- `TVRemote/State/` bridges the package connection manager to SwiftUI and contains the opt-in demo. The app composition root is `TVRemoteApp.swift`.
 - `TVRemote/Design/` and `TVRemote/Screens/` contain the adaptive palette, shared SwiftUI components and iPhone screens. The remote uses a fixed d-pad layout, haptics and a separate keyboard entrance, informed by the [official Roku remote](https://support.roku.com/article/roku-remote-on-your-phone); system typography, visible status labels and large controls follow [Apple’s accessibility HIG](https://developer.apple.com/design/human-interface-guidelines/accessibility) and the [SwiftUI Pro accessibility checklist](https://github.com/twostraws/swiftui-agent-skill/blob/main/swiftui-pro/references/accessibility.md).
 - `TVRemoteTests/` exercises discovery, pairing, switching, command gating, sleep and wake with the demo driver.
 
-## Integration and follow-on phases
+## Try the simulated-TV lab
+
+Check out [the lab](https://github.com/ADITYADEV4145/TVRemote/pull/2) separately. From its `TestLab/` directory:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python -m tvlab up --ssdp-port 1900 --wol-port 9009
+```
+
+In an iPhone Simulator on the same Mac, use **Enter IP address**:
+
+| TV | Address | Pairing |
+| --- | --- | --- |
+| Roku | `127.0.0.1:8060` | No approval needed |
+| Google TV | `127.0.0.1:6466` | Enter the six-character code printed by the lab after the app opens the code screen |
+| Samsung | `127.0.0.1:8002` (or `8001`) | The lab approves automatically |
+| LG | `127.0.0.1:3001` (or `3000`) | The lab approves automatically |
+
+The opt-in UI tests verify command delivery and recovery against the isolated loopback lab. They use temporary app credentials, revoke existing **lab** credentials, and restart its TV listeners, so use a dedicated test instance:
+
+```sh
+TEST_RUNNER_TVREMOTE_RUN_LAB=1 xcodebuild -scheme TVRemote \
+  -destination 'platform=iOS Simulator,id=<simulator-udid>' -parallel-testing-enabled NO \
+  -only-testing:TVRemoteUITests/SimulatedTVTests test
+```
 
 ## Figma iPhone implementation
 
@@ -35,8 +62,8 @@ xcodebuild -scheme TVRemoteDesignReview -destination 'platform=iOS Simulator,id=
 xcrun xcresulttool export attachments --path DesignReview.xcresult --output-path DesignReviewShots
 ```
 
-Use an available iOS simulator ID from `xcrun simctl list devices`; the example ID is not portable. The normal `TVRemote` scheme keeps the functional unit/UI regressions separate from the longer visual inventory. The existing `TVDriver` protocol is unchanged so the platform-driver package can land independently.
+Use an available iOS simulator ID from `xcrun simctl list devices`; the example ID is not portable. The normal `TVRemote` scheme keeps the functional unit/UI regressions separate from the longer visual inventory.
 
-Next, wire the real driver and exercise system permissions, secure pairing, reconnects and standby on supported hardware. Integrate on-device voice and Apple system surfaces, then ship StoreKit, the privacy policy, TestFlight and store assets after the physical-TV release gates pass. The settings screens only preview diagnostics and plans in this build; they do not probe a network or accept purchases.
+Next, exercise system permissions, secure pairing, reconnects and standby on supported hardware. Integrate on-device voice and Apple system surfaces, then ship StoreKit, the privacy policy, TestFlight and store assets after the physical-TV release gates pass. The plans screen does not accept purchases.
 
 After the launch roadmap, validate a one-handed accessibility mode against task-completion and mis-tap rates; then measure whether opt-in, redacted self-diagnostics improve recovery before adding more recovery automation. Use those results and real model compatibility to prioritize future platforms.

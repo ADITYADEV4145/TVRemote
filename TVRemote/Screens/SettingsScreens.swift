@@ -1,5 +1,4 @@
 import SwiftUI
-import TVDriverKit
 
 struct SettingsScreen: View {
     @AppStorage("hapticsEnabled") private var haptics = true
@@ -81,7 +80,7 @@ struct VoiceSettingsScreen: View {
 }
 
 struct DiagnosticsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @State private var showRepair = false
 
     var body: some View {
@@ -112,19 +111,26 @@ struct DiagnosticsScreen: View {
         }
         .modifier(TaskSurface())
         .onAppear { connection.clearMessages() }
+        .onChange(of: connection.pairingPrompt) {
+            if connection.pairingPrompt != nil { showRepair = true }
+        }
         .sheet(isPresented: $showRepair) {
-            NavigationStack { SetupScreen(initiallyStarted: true) { showRepair = false } }
+            NavigationStack {
+                SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code) {
+                    showRepair = false
+                }
+            }
         }
     }
 }
 
 struct ConnectionDetailsScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     var device: TVDevice? = nil
 
     private var target: TVDevice? { device ?? connection.currentDevice }
     private var selected: Bool { target != nil && target?.id == connection.currentDevice?.id }
-    private var commands: [ConnectionManager.RecentCommand] {
+    private var commands: [RemoteViewModel.RecentCommand] {
         guard let target else { return [] }
         return connection.recentCommands.filter { $0.deviceID == target.id }
     }
@@ -155,7 +161,7 @@ struct ConnectionDetailsScreen: View {
 }
 
 struct SupportPreviewScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @State private var includeCommands = false
 
     private var report: String {

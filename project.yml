@@ -6,20 +6,28 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1"
+packages:
+  TVRemoteKit:
+    path: Packages/TVRemoteKit
 targets:
-  TVDriverKit:
-    type: framework
-    platform: iOS
-    sources: [TVDriverKit]
-    settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.adityapunjani.TVRemote.DriverKit
-      GENERATE_INFOPLIST_FILE: YES
   TVRemote:
     type: application
     platform: iOS
-    sources: [TVRemote]
+    sources:
+      - path: TVRemote
+        excludes: [Info.plist]
     dependencies:
-      - target: TVDriverKit
+      - package: TVRemoteKit
+    info:
+      path: TVRemote/Info.plist
+      properties:
+        NSLocalNetworkUsageDescription: Find and control TVs on your local network.
+        NSBonjourServices:
+          - _roku-ecp._tcp
+          - _androidtvremote2._tcp
+          - _samsungmsf._tcp
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: com.adityapunjani.TVRemote
       GENERATE_INFOPLIST_FILE: YES

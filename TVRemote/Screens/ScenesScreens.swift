@@ -1,5 +1,4 @@
 import SwiftUI
-import TVDriverKit
 
 struct ScenesScreen: View {
     @AppStorage("sceneDraftName") private var name = ""

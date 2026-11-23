@@ -1,6 +1,5 @@
 #if DEBUG
 import SwiftUI
-import TVDriverKit
 
 /// One entry per iPhone screen/state in the Figma handoff. These are view fixtures,
 /// not simulated permission grants, purchases or voice recognition.
@@ -44,7 +43,7 @@ struct DesignCatalogScreen: View {
 
 struct DesignStateHost: View {
     let spec: DesignSpec
-    @State private var connection = ConnectionManager(driver: MockTVDriver(), isDemo: true)
+    @State private var connection = RemoteViewModel(driver: MockTVDriver(), isDemo: true)
     @State private var prepared = false
     @State private var favorites = "netflix,youtube,prime-video"
     @State private var preferences = PreviewPreferences()

@@ -1,12 +1,11 @@
 import SwiftUI
-import TVDriverKit
 
 enum SetupPage: String {
     case welcome, network, discovery, code, approval, retry, ready, manual, denied, empty
 }
 
 struct SetupScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @State private var page: SetupPage
     @State private var address = ""
     @State private var code = ""
@@ -52,7 +51,8 @@ struct SetupScreen: View {
                 Button("Open remote", action: connected).buttonStyle(PrimaryActionStyle())
                 SupportingCopy(title: "No payment needed", detail: "Power, supported navigation, volume and recovery stay free.")
             default:
-                SetupStatusContent(page: page, retry: { page = .discovery }, manual: { page = .manual })
+                SetupStatusContent(page: page, retry: { connection.cancelPairing(); page = .discovery },
+                                   manual: { page = .manual })
             }
             if connection.isConnecting { ProgressView("Connecting to TV") }
             ConnectionMessage()
@@ -75,9 +75,10 @@ struct SetupScreen: View {
             }
         }
         .task(id: page) { if page == .discovery { await connection.discover() } }
-        .onChange(of: connection.pairingDevice) {
-            if connection.pairingDevice != nil { page = .code }
+        .onChange(of: connection.pairingPrompt) {
+            if let prompt = connection.pairingPrompt { page = prompt == .approval ? .approval : .code }
         }
+        .onChange(of: connection.approvalCompletion) { page = .ready }
         .interactiveDismissDisabled(connection.isConnecting)
         .onDisappear { connection.cancelPairing() }
     }
@@ -199,7 +200,7 @@ struct SetupStatusContent: View {
 }
 
 struct DevicesScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     let add: () -> Void
     let connected: () -> Void
 
@@ -225,17 +226,21 @@ struct DevicesScreen: View {
                 }
             }
             if connection.pairingDevice != nil {
-                NavigationLink("Finish pairing") { SetupScreen(initialPage: .code, connected: connected) }
+                NavigationLink("Finish pairing") {
+                    SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code,
+                                connected: connected)
+                }
                     .buttonStyle(PrimaryActionStyle())
             }
             Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
             ConnectionMessage()
         }
+        .onChange(of: connection.approvalCompletion) { connected() }
     }
 }
 
 struct TVDetailScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     let device: TVDevice
 
     var body: some View {
@@ -255,7 +260,7 @@ struct TVDetailScreen: View {
 }
 
 struct ForgetTVScreen: View {
-    @Environment(ConnectionManager.self) private var connection
+    @Environment(RemoteViewModel.self) private var connection
     @Environment(\.dismiss) private var dismiss
     @State private var forgotten = false
     let device: TVDevice

@@ -1,7 +1,6 @@
 import Foundation
-import TVDriverKit
 
-final class MockTVDriver: TVDriver, PairingCodeDriver, ManualAddressDriver, PointerDriver, DisconnectingTVDriver {
+final class MockTVDriver {
     enum Command: Equatable {
         case key(RemoteKey)
         case app(AppID)
@@ -50,18 +49,18 @@ final class MockTVDriver: TVDriver, PairingCodeDriver, ManualAddressDriver, Poin
         }
     }
 
-    func pair(_ tv: TVDevice) async throws -> Credential {
+    func pair(_ tv: TVDevice) async throws -> String {
         guard !tv.requiresPairingCode else { throw Failure.incorrectCode }
-        return Credential(value: tv.id)
+        return tv.id
     }
 
-    func pair(_ tv: TVDevice, code: String) async throws -> Credential {
+    func pair(_ tv: TVDevice, code: String) async throws -> String {
         guard code == Self.demoCode else { throw Failure.incorrectCode }
-        return Credential(value: tv.id)
+        return tv.id
     }
 
-    func connect(_ tv: TVDevice, _ cred: Credential) async throws {
-        guard cred.value == tv.id else { throw Failure.incorrectCode }
+    func connect(_ tv: TVDevice, _ cred: String) async throws {
+        guard cred == tv.id else { throw Failure.incorrectCode }
         lock.withLock {
             connectedDevice = tv
             updates.yield(.ready)
