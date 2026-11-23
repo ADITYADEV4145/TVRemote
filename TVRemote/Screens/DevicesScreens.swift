@@ -6,15 +6,18 @@ enum SetupPage: String {
 
 struct SetupScreen: View {
     @Environment(RemoteViewModel.self) private var connection
+    @Environment(\.dismiss) private var dismiss
     @State private var page: SetupPage
     @State private var address = ""
     @State private var code = ""
     private let movedDeviceID: String?
+    private let initiallyStarted: Bool
     let connected: () -> Void
 
     init(initiallyStarted: Bool = false, initialPage: SetupPage? = nil, movedDeviceID: String? = nil,
          connected: @escaping () -> Void) {
         _page = State(initialValue: initialPage ?? (initiallyStarted ? .discovery : .welcome))
+        self.initiallyStarted = initiallyStarted
         self.movedDeviceID = movedDeviceID
         self.connected = connected
     }
@@ -72,7 +75,9 @@ struct SetupScreen: View {
                         connection.cancelPairing()
                         switch page {
                         case .network: page = .welcome
-                        case .discovery: page = .network
+                        case .discovery:
+                            if initiallyStarted { dismiss() }
+                            else { page = .network }
                         default: page = .discovery
                         }
                     }

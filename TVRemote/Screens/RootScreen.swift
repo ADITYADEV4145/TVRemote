@@ -53,14 +53,17 @@ struct RootScreen: View {
         }
         .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
         .onAppear {
-            if showWelcome && !hasSeenWelcome { sheet = .setup; hasSeenWelcome = true }
+            if showWelcome && !hasSeenWelcome {
+                if connection.savedDevices.isEmpty { sheet = .setup }
+                hasSeenWelcome = true
+            }
         }
         .onChange(of: tab) { connection.clearMessages() }
         .onChange(of: sheet) { connection.clearMessages() }
         .sheet(item: $sheet) { tool in
             NavigationStack {
                 switch tool {
-                case .setup: SetupScreen(connected: returnToRemote)
+                case .setup: SetupScreen(initiallyStarted: !connection.savedDevices.isEmpty, connected: returnToRemote)
                 case .keyboard: KeyboardScreen()
                 case .trackpad: TrackpadScreen()
                 case .voice: VoiceScreen()
