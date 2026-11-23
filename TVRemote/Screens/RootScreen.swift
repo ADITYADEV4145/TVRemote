@@ -6,6 +6,7 @@ struct RootScreen: View {
     @AppStorage("hasSeenWelcome") private var hasSeenWelcome = false
     @State private var tab = Tab.remote
     @State private var sheet: Tool?
+    @State private var remotePath: [RemoteDestination] = []
     var showWelcome = true
     var remoteTouchpad = false
     var forceLarge = false
@@ -18,6 +19,7 @@ struct RootScreen: View {
     }
 
     enum Tab { case remote, devices, apps, settings }
+    enum RemoteDestination: Hashable { case diagnostics }
     enum Tool: String, Identifiable {
         case setup, keyboard, trackpad, voice, inputs, keypad
         var id: Self { self }
@@ -25,8 +27,11 @@ struct RootScreen: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            NavigationStack {
+            NavigationStack(path: $remotePath) {
                 RemoteScreen(touchpad: remoteTouchpad, forceLarge: forceLarge, open: { sheet = $0 }).toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: RemoteDestination.self) { _ in
+                        DiagnosticsScreen(openRemote: returnToRemote)
+                    }
             }
             .tabItem { Label("Remote", systemImage: "square.grid.2x2") }.tag(Tab.remote)
 
@@ -36,13 +41,13 @@ struct RootScreen: View {
             .tabItem { Label("Apps", systemImage: "play") }.tag(Tab.apps)
 
             NavigationStack {
-                DevicesScreen(add: { sheet = .setup }, connected: { tab = .remote })
+                DevicesScreen(add: { sheet = .setup }, connected: returnToRemote)
                     .toolbar(.hidden, for: .navigationBar)
             }
             .tabItem { Label("My TVs", systemImage: "tv") }.tag(Tab.devices)
 
             NavigationStack {
-                SettingsScreen().toolbar(.hidden, for: .navigationBar)
+                SettingsScreen(openRemote: returnToRemote).toolbar(.hidden, for: .navigationBar)
             }
             .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }.tag(Tab.settings)
         }
@@ -55,7 +60,7 @@ struct RootScreen: View {
         .sheet(item: $sheet) { tool in
             NavigationStack {
                 switch tool {
-                case .setup: SetupScreen { sheet = nil; tab = .remote }
+                case .setup: SetupScreen(connected: returnToRemote)
                 case .keyboard: KeyboardScreen()
                 case .trackpad: TrackpadScreen()
                 case .voice: VoiceScreen()
@@ -65,6 +70,12 @@ struct RootScreen: View {
             }
             .preferredColorScheme(appearance == "System" ? nil : appearance == "Dark" ? .dark : .light)
         }
+    }
+
+    private func returnToRemote() {
+        sheet = nil
+        remotePath.removeAll()
+        tab = .remote
     }
 }
 

@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsScreen: View {
     @AppStorage("hapticsEnabled") private var haptics = true
     @AppStorage("largeControls") private var largeControls = false
+    var openRemote: () -> Void = {}
 
     var body: some View {
         ScreenBody {
@@ -14,7 +15,7 @@ struct SettingsScreen: View {
                 route("mic", "Voice", "On-device access and command help") { VoiceSettingsScreen() }
             }
             Panel {
-                route("wifi.exclamationmark", "Fix my connection", "Free help, whenever you need it") { DiagnosticsScreen() }
+                route("wifi.exclamationmark", "Fix my connection", "Free help, whenever you need it") { DiagnosticsScreen(openRemote: openRemote) }
                 route("tv", "Compatibility", "TV platforms and capabilities") { CompatibilityScreen() }
                 route("lock.shield", "Privacy", "Local by design") { PrivacyScreen() }
             }
@@ -27,7 +28,7 @@ struct SettingsScreen: View {
             NavigationLink("Design states") { DesignCatalogScreen() }
                 .frame(minHeight: 44)
             #endif
-            SupportingCopy(title: "The honest remote", detail: "Demo build. No ads, no purchases, no physical-TV control.")
+            SupportingCopy(title: "The honest remote", detail: "No ads or purchases. Connections were tested with simulated TVs only.")
         }
         .buttonStyle(.plain)
     }
@@ -83,6 +84,7 @@ struct DiagnosticsScreen: View {
     @Environment(RemoteViewModel.self) private var connection
     @State private var showRepair = false
     @State private var editingAddress = false
+    var openRemote: () -> Void = {}
 
     var body: some View {
         ScreenBody {
@@ -129,6 +131,7 @@ struct DiagnosticsScreen: View {
             NavigationStack {
                 SetupScreen(initialPage: connection.pairingPrompt == .approval ? .approval : .code) {
                     showRepair = false
+                    openRemote()
                 }
             }
         }
@@ -136,6 +139,7 @@ struct DiagnosticsScreen: View {
             NavigationStack {
                 SetupScreen(initialPage: .manual, movedDeviceID: connection.currentDevice?.id) {
                     editingAddress = false
+                    openRemote()
                 }
             }
         }

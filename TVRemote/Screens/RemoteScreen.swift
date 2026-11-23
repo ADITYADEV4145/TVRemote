@@ -93,7 +93,7 @@ struct RemoteScreen: View {
                 }
                 Spacer()
                 if [.recovering, .degraded, .needsRepair, .asleep].contains(connection.state) {
-                    NavigationLink("Fix connection") { DiagnosticsScreen() }
+                    NavigationLink("Fix connection", value: RootScreen.RemoteDestination.diagnostics)
                         .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
                 }
             }
