@@ -63,7 +63,11 @@ struct SetupScreen: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Back", systemImage: "chevron.left") {
                         connection.cancelPairing()
-                        page = page == .network ? .welcome : .discovery
+                        switch page {
+                        case .network: page = .welcome
+                        case .discovery: page = .network
+                        default: page = .discovery
+                        }
                     }
                     .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
                     .disabled(connection.isConnecting)
