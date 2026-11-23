@@ -37,7 +37,9 @@ final class RemoteViewModel {
     @ObservationIgnored private var pairingTask: Task<Bool, Never>?
     @ObservationIgnored private var codeReply: CheckedContinuation<PairingResponse, any Error>?
     @ObservationIgnored private var pairingAttempt = UUID()
-    @ObservationIgnored private var commandRunning = false
+    @ObservationIgnored private var commandTail: Task<Void, Never>?
+    @ObservationIgnored private var commandSequence = 0
+    @ObservationIgnored private var selectionGeneration = 0
     @ObservationIgnored private var healthCheck: Task<Void, Never>?
 
     init(driver: MockTVDriver, isDemo: Bool = true) {
@@ -79,7 +81,7 @@ final class RemoteViewModel {
         guard let live else { return }
         while !Task.isCancelled {
             do { try await Task.sleep(for: .seconds(2)) } catch { return }
-            guard canControl, !commandRunning, healthCheck == nil else { continue }
+            guard canControl, commandTail == nil, healthCheck == nil else { continue }
             let check = Task {
                 try? await live.manager.checkConnection()
                 if let device = await live.manager.currentDevice, currentDevice != nil, !isConnecting {
@@ -159,6 +161,7 @@ final class RemoteViewModel {
 
     func select(_ device: TVDevice) async -> Bool {
         guard !isConnecting else { return false }
+        selectionGeneration += 1
         cancelPairing()
         pairingDevice = nil
         error = nil
@@ -222,6 +225,7 @@ final class RemoteViewModel {
         if pairingDevice?.id == device.id { cancelPairing() }
         guard currentDevice?.id == device.id else { return }
 
+        selectionGeneration += 1
         isConnecting = true
         currentDevice = nil
         state = .idle
@@ -233,12 +237,12 @@ final class RemoteViewModel {
 
     func send(_ key: RemoteKey) async {
         if key == .power, canWake, !isConnecting, let device = currentDevice {
-            await perform("Wake TV", feedback: "Waking \(device.name)") {
+            await perform("Wake TV", feedback: "Waking \(device.name)") { [self] in
                 if let live { try await live.manager.wake() }
                 else { try await driver?.wake(device) }
             }
         } else if canControl {
-            await perform(key.commandTitle) {
+            await perform(key.commandTitle) { [self] in
                 if let live { try await live.manager.send(key.wireKey) }
                 else { try await driver?.send(key) }
             }
@@ -247,7 +251,7 @@ final class RemoteViewModel {
 
     func launch(_ app: AppID, name: String) async {
         guard canControl else { return }
-        await perform("Open \(name)", feedback: "Opening \(name)") {
+        await perform("Open \(name)", feedback: "Opening \(name)") { [self] in
             if let live { try await live.manager.launch(app) }
             else { try await driver?.launch(app) }
         }
@@ -256,7 +260,7 @@ final class RemoteViewModel {
     func search(_ query: String) async {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canControl, !query.isEmpty else { return }
-        await perform("TV search", feedback: "Search sent to TV") {
+        await perform("TV search", feedback: "Search sent to TV") { [self] in
             if let live { try await live.manager.search(query) }
             else { try await driver?.search(query) }
         }
@@ -394,12 +398,26 @@ final class RemoteViewModel {
     }
 
     private func perform(_ command: String, feedback message: String? = nil,
-                         action: () async throws -> Void) async {
+                         action: @escaping @MainActor () async throws -> Void) async {
+        let previous = commandTail
+        let selection = selectionGeneration
+        commandSequence += 1
+        let sequence = commandSequence
+        let task = Task {
+            await previous?.value
+            guard selectionGeneration == selection else { return }
+            await runCommand(command, feedback: message, action: action)
+        }
+        commandTail = task
+        await task.value
+        if commandSequence == sequence { commandTail = nil }
+    }
+
+    private func runCommand(_ command: String, feedback message: String?,
+                            action: @MainActor () async throws -> Void) async {
+        let selection = selectionGeneration
         await healthCheck?.value
-        guard !isConnecting else { return }
-        guard !commandRunning else { return }
-        commandRunning = true
-        defer { commandRunning = false }
+        guard selectionGeneration == selection, !isConnecting else { return }
         let generation = messageGeneration
         let deviceID = currentDevice?.id
         error = nil

@@ -6,13 +6,28 @@ private actor LiveFixtureDriver: TVDriver {
     nonisolated var state: AsyncStream<TVRemoteCore.ConnectionState> { AsyncStream { $0.finish() } }
     private var online = true
     private(set) var wakes = 0
+    private(set) var keys: [TVRemoteCore.RemoteKey] = []
+    private let firstSend = AsyncStream<Void>.makeStream()
+    private let release = AsyncStream<Void>.makeStream()
+    private var holdFirstSend = false
 
     func goOffline() { online = false }
+    func holdNextSend() { holdFirstSend = true }
+    func waitForSend() async { for await _ in firstSend.stream { break } }
+    func releaseSend() { release.continuation.finish() }
     nonisolated func discover() -> AsyncStream<TVRemoteCore.TVDevice> { AsyncStream { $0.finish() } }
     func probe(_ endpoint: TVEndpoint) async throws -> TVRemoteCore.TVDevice { throw TVError.unreachable }
     func pair(_ tv: TVRemoteCore.TVDevice, prompt: PairingPromptHandler) async throws -> Credential { .token("paired") }
     func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws { try requireOnline() }
-    func send(_ key: TVRemoteCore.RemoteKey) async throws { try requireOnline() }
+    func send(_ key: TVRemoteCore.RemoteKey) async throws {
+        try requireOnline()
+        keys.append(key)
+        if holdFirstSend {
+            holdFirstSend = false
+            firstSend.continuation.yield(())
+            for await _ in release.stream {}
+        }
+    }
     func launch(_ app: TVRemoteCore.AppID) async throws { throw TVError.notSupported }
     func search(_ query: String) async throws { throw TVError.notSupported }
     func wake(_ tv: TVRemoteCore.TVDevice) async {
@@ -140,6 +155,26 @@ final class ConnectionManagerTests: XCTestCase {
             let wakes = await driver.wakes
             XCTAssertEqual(wakes, 1)
         }
+    }
+
+    func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
+        let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
+        try await session.credentials.save(.token("paired"), for: device.id)
+        let connected = await connection.select(session.remember(device))
+        XCTAssertTrue(connected)
+        await driver.holdNextSend()
+        let first = Task { await connection.send(.volumeUp) }
+        await driver.waitForSend()
+        let second = Task { await connection.send(.left) }
+        await Task.yield()
+        let third = Task { await connection.send(.volumeDown) }
+        await Task.yield()
+        await driver.releaseSend()
+        await first.value
+        await second.value
+        await third.value
+        let keys = await driver.keys
+        XCTAssertEqual(keys, [.volumeUp, .left, .volumeDown])
     }
 
     private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities) async throws
