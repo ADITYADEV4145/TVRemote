@@ -18,6 +18,8 @@ enum TextNormalizer {
                 continue
             } else if c == ".", i > 0, i + 1 < chars.count, chars[i - 1].isNumber, chars[i + 1].isNumber {
                 out.append(c)
+            } else if c == "-", i > 0, i + 1 < chars.count, chars[i - 1].isNumber, chars[i + 1].isNumber {
+                out.append(" dash ")
             } else {
                 out.append(" ")
             }
@@ -38,12 +40,16 @@ enum TextNormalizer {
         ["please"], ["for", "me"], ["right", "now"], ["now"], ["thanks"], ["thank", "you"], ["ok"], ["okay"],
     ]
 
+    static let okWords: Set<[String]> = [["ok"], ["okay"]]
+    static let pressVerbs: Set = ["press", "hit", "click", "tap"]
+
     static func stripFillers(_ words: [String]) -> [String] {
         var w = words[...]
         var changed = true
         while changed, !w.isEmpty {
             changed = false
-            for f in leadingFillers where w.count > f.count && Array(w.prefix(f.count)) == f {
+            for f in leadingFillers where w.count > f.count && Array(w.prefix(f.count)) == f
+                && !(okWords.contains(f) && w.dropFirst(f.count).first == "button") {
                 w = w.dropFirst(f.count)
                 changed = true
                 break
@@ -52,7 +58,8 @@ enum TextNormalizer {
         changed = true
         while changed, !w.isEmpty {
             changed = false
-            for f in trailingFillers where w.count > f.count && Array(w.suffix(f.count)) == f {
+            for f in trailingFillers where w.count > f.count && Array(w.suffix(f.count)) == f
+                && !(okWords.contains(f) && pressVerbs.contains(w[w.endIndex - f.count - 1])) {
                 w = w.dropLast(f.count)
                 changed = true
                 break

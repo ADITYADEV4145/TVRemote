@@ -85,4 +85,22 @@ final class SearchTests: XCTestCase {
         let context = VoiceContext(supportsSearch: false)
         XCTAssertEqual(search.interpretExplicit("play the bear on hulu", context: context)?.canonical, "launch:hulu")
     }
+
+    func testReviewRegressions() {
+        let grammar = GrammarInterpreter()
+        let search = ContentSearchInterpreter()
+        func g(_ t: String) -> String? { grammar.interpret(t)?.canonical }
+        func s(_ t: String) -> String? { search.interpretExplicit(t)?.canonical }
+        XCTAssertEqual(g("type HDMI 2"), "type:HDMI 2")
+        XCTAssertNil(g("search for HDMI 2"))
+        XCTAssertEqual(s("search for HDMI 2"), "search:hdmi 2")
+        XCTAssertEqual(g("channel 7-1"), "channel:7.1")
+        XCTAssertEqual(g("press OK"), "key:select")
+        XCTAssertEqual(g("OK button"), "key:select")
+        XCTAssertEqual(g("switch to HDMI 2"), "input:hdmi2")
+        XCTAssertEqual(g("search"), "key:search")
+        XCTAssertEqual(s("search for Movie 43"), "search:movie 43")
+        XCTAssertEqual(s("find Of Mice and Men"), "search:of mice and men")
+        XCTAssertEqual(s("find episodes of The Office"), "search:the office")
+    }
 }
