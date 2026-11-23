@@ -3,10 +3,14 @@ import TVDriverKit
 
 struct KeyboardScreen: View {
     @Environment(ConnectionManager.self) private var connection
-    @SceneStorage("keyboardDraft") private var query = ""
+    @SceneStorage("keyboardDraft") private var savedQuery = ""
+    @Environment(\.isDesignPreview) private var isDesignPreview
+    @State private var previewQuery = ""
     @FocusState private var focused: Bool
     @State private var sending = false
     var sentPreview = false
+
+    private var query: Binding<String> { isDesignPreview ? $previewQuery : $savedQuery }
 
     var body: some View {
         ScreenBody {
@@ -16,7 +20,7 @@ struct KeyboardScreen: View {
                 Text("Search on your TV").font(.headline)
                 Text("This driver supports search, not typing into arbitrary TV fields or passwords.")
                     .font(.subheadline).foregroundStyle(RemoteTheme.muted)
-                TextField("Type a search", text: $query, axis: .vertical)
+                TextField("Type a search", text: query, axis: .vertical)
                     .lineLimit(3...6).textInputAutocapitalization(.sentences)
                     .padding(16).background(RemoteTheme.canvas, in: RoundedRectangle(cornerRadius: 16))
                     .submitLabel(.search).focused($focused).disabled(!connection.canControl || sending)
@@ -24,9 +28,9 @@ struct KeyboardScreen: View {
             }
             Button(sending ? "Sending…" : "Send search", systemImage: "arrow.up.right", action: send)
                 .buttonStyle(PrimaryActionStyle())
-                .disabled(!connection.canControl || sending || query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            Button("Clear draft") { query = ""; connection.clearMessages() }
-                .buttonStyle(SecondaryActionStyle()).disabled(sending || query.isEmpty)
+                .disabled(!connection.canControl || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Clear draft") { query.wrappedValue = ""; connection.clearMessages() }
+                .buttonStyle(SecondaryActionStyle()).disabled(sending || query.wrappedValue.isEmpty)
             ConnectionMessage()
             SupportingCopy(title: "Only when you send", detail: "Your draft stays on this iPhone until you tap Send search. A sent search is not proof of a visible change on the TV.")
         }
@@ -37,7 +41,8 @@ struct KeyboardScreen: View {
         guard !sending else { return }
         focused = false
         sending = true
-        Task { await connection.search(query); sending = false }
+        let text = query.wrappedValue
+        Task { await connection.search(text); sending = false }
     }
 }
 

@@ -1,5 +1,16 @@
 import SwiftUI
 
+private struct DesignPreviewKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isDesignPreview: Bool {
+        get { self[DesignPreviewKey.self] }
+        set { self[DesignPreviewKey.self] = newValue }
+    }
+}
+
 struct SecondaryActionStyle: ButtonStyle {
     var destructive = false
     @Environment(\.isEnabled) private var isEnabled

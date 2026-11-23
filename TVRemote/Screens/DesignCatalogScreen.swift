@@ -47,6 +47,7 @@ struct DesignStateHost: View {
     @State private var connection = ConnectionManager(driver: MockTVDriver(), isDemo: true)
     @State private var prepared = false
     @State private var favorites = "netflix,youtube,prime-video"
+    @State private var preferences = PreviewPreferences()
     @Environment(\.dismiss) private var dismiss
     var appearance: ColorScheme? = nil
 
@@ -59,6 +60,8 @@ struct DesignStateHost: View {
             }
         }
         .environment(connection)
+        .environment(\.isDesignPreview, true)
+        .defaultAppStorage(preferences.store)
         .safeAreaInset(edge: .top, spacing: 0) {
             HStack {
                 Text("DESIGN PREVIEW · \(spec.rawValue)").font(.caption2.weight(.semibold))
@@ -159,5 +162,14 @@ struct DesignStateHost: View {
         default: .welcome
         }
     }
+}
+
+/// A fresh disposable preference domain per fixture; no saved app data is read or written.
+private final class PreviewPreferences {
+    private let domain = "TVRemote.DesignPreview.\(UUID().uuidString)"
+    let store: UserDefaults
+
+    init() { store = UserDefaults(suiteName: domain)! }
+    deinit { store.removePersistentDomain(forName: domain) }
 }
 #endif
