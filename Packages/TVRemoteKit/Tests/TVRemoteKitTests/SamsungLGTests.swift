@@ -191,9 +191,9 @@ private struct SocketDiscovery: DiscoverySource {
 }
 
 @Test func lgDiscoverFallsBackToPlainAndRejectsExpiredClientKey() async throws {
-    let unsupported = #"{"id":"hello","type":"error","error":"401 not registered"}"#
-    let probe = SocketTranscript([unsupported])
-    let invalid = SocketTranscript([unsupported, #"{"id":"register","type":"error","error":"403 forbidden"}"#])
+    let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"original"}}"#
+    let probe = SocketTranscript([identity])
+    let invalid = SocketTranscript([identity, #"{"id":"register","type":"error","error":"403 forbidden"}"#])
     let sockets = SocketScript([.failure(.unreachable), .success(probe), .success(invalid)])
     let discovery = SocketDiscovery(endpoint: TVEndpoint(host: "tv.local", port: 3001))
     let driver = LGWebOSDriver(sockets: sockets, discovery: discovery)
@@ -201,7 +201,9 @@ private struct SocketDiscovery: DiscoverySource {
     for await device in driver.discover() { devices.append(device) }
     let tv = try #require(devices.first)
     #expect(tv.endpoint.port == 3000)
-    await #expect(throws: TVError.credentialRejected) { try await driver.connect(tv, .clientKey("expired")) }
+    await #expect(throws: TVError.credentialRejected) {
+        try await driver.connect(tv, .webOSPlainClientKey("expired", deviceUUID: "original"))
+    }
     #expect(await invalid.closed)
     #expect(await sockets.attempts.map { $0.url.port } == [3001, 3000, 3000])
 }
@@ -213,7 +215,27 @@ private struct SocketDiscovery: DiscoverySource {
     let driver = LGWebOSDriver(sockets: sockets)
     let tv = TVDevice(id: TVIdentity(platform: .lg, identifier: "original"), name: "LG",
                       endpoint: TVEndpoint(host: "tv.local", port: 3000), capabilities: .remoteKeys)
-    await #expect(throws: TVError.identityMismatch) { try await driver.connect(tv, .clientKey("old-key")) }
+    await #expect(throws: TVError.identityMismatch) {
+        try await driver.connect(tv, .webOSPlainClientKey("old-key", deviceUUID: "original"))
+    }
+    #expect(try await control.outbound().map { $0["type"].string } == ["hello"])
+    #expect(await control.closed)
+}
+
+@Test func lgDoesNotSendStoredPlainKeyWhenHelloOmitsDeviceIdentity() async throws {
+    let noIdentity = #"{"id":"hello","type":"hello","payload":{}}"#
+    let control = SocketTranscript([noIdentity])
+    let sockets = SocketScript([.success(control)])
+    let driver = LGWebOSDriver(sockets: sockets)
+    let tv = TVDevice(id: TVIdentity(platform: .lg, identifier: "tv.local"), name: "LG",
+                      endpoint: TVEndpoint(host: "tv.local", port: 3000), capabilities: .remoteKeys)
+    await #expect(throws: TVError.pairingRequired) {
+        try await driver.connect(tv, .webOSClientKey("legacy-key", certificate: nil))
+    }
+    #expect(await sockets.attempts.isEmpty)
+    await #expect(throws: TVError.pairingRequired) {
+        try await driver.connect(tv, .webOSPlainClientKey("paired-key", deviceUUID: "original"))
+    }
     #expect(try await control.outbound().map { $0["type"].string } == ["hello"])
     #expect(await control.closed)
 }

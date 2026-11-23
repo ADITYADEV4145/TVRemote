@@ -28,19 +28,23 @@ public actor LGWebOSDriver: TVDriver {
     }
 
     public func probe(_ endpoint: TVEndpoint) async throws -> TVDevice {
-        let (live, socket) = try await open(endpoint)
+        let (live, socket, _) = try await open(endpoint)
         await socket.close()
         return live
     }
 
     public func pair(_ tv: TVDevice, prompt: PairingPromptHandler) async throws -> Credential {
-        let (live, socket) = try await open(tv.endpoint)
+        let (live, socket, uuid) = try await open(tv.endpoint)
         do {
             guard live.id == tv.id else { throw TVError.identityMismatch }
+            guard live.endpoint.port == 3001 || uuid != nil else { throw TVError.pairingRequired }
             let key = try await register(socket, key: nil, prompt: prompt)
             let certificate = socket.peerCertificate
             guard live.endpoint.port != 3001 || certificate != nil else { throw TVError.invalidResponse }
             await socket.close()
+            if live.endpoint.port == 3000, let uuid {
+                return .webOSPlainClientKey(key, deviceUUID: uuid)
+            }
             return .webOSClientKey(key, certificate: certificate)
         } catch {
             await socket.close()
@@ -51,9 +55,10 @@ public actor LGWebOSDriver: TVDriver {
     public func connect(_ tv: TVDevice, _ cred: Credential) async throws {
         let key: String
         let certificate: Data?
+        let expectedUUID: String?
         switch cred {
-        case .webOSClientKey(let saved, let pin): (key, certificate) = (saved, pin)
-        case .clientKey(let saved): (key, certificate) = (saved, nil)
+        case .webOSClientKey(let saved, let pin?): (key, certificate, expectedUUID) = (saved, pin, nil)
+        case .webOSPlainClientKey(let saved, let uuid): (key, certificate, expectedUUID) = (saved, nil, uuid)
         default: throw TVError.pairingRequired
         }
         let savedAddress = device?.id == tv.id ? device?.wakeAddress : nil
@@ -64,8 +69,12 @@ public actor LGWebOSDriver: TVDriver {
         device = nil
         updates.yield(.connecting)
         do {
-            let (live, socket) = try await open(tv.endpoint, credentialed: true, certificate: certificate)
+            let (live, socket, uuid) = try await open(tv.endpoint, credentialed: true, certificate: certificate)
             do {
+                if let expectedUUID {
+                    guard let uuid else { throw TVError.pairingRequired }
+                    guard uuid == expectedUUID else { throw TVError.identityMismatch }
+                }
                 guard live.id == tv.id else { throw TVError.identityMismatch }
                 _ = try await register(socket, key: key)
                 let address = live.wakeAddress ?? tv.wakeAddress ?? savedAddress
@@ -84,7 +93,8 @@ public actor LGWebOSDriver: TVDriver {
             trust = certificate.map(TLSPeerTrust.pinned) ?? .system
             updates.yield(.ready)
         } catch {
-            updates.yield(error as? TVError == .credentialRejected ? .needsRepair : .degraded)
+            let failure = error as? TVError
+            updates.yield(failure == .credentialRejected || failure == .pairingRequired ? .needsRepair : .degraded)
             throw error
         }
     }
@@ -148,7 +158,7 @@ public actor LGWebOSDriver: TVDriver {
 
     private func open(
         _ endpoint: TVEndpoint, credentialed: Bool = false, certificate: Data? = nil
-    ) async throws -> (TVDevice, any WebSocketConnection) {
+    ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         let ports: [UInt16] = credentialed ? [certificate == nil ? 3000 : 3001]
             : (endpoint.port == 3000 ? [3000, 3001] : [3001, 3000])
         var last: any Error = TVError.unreachable
@@ -168,9 +178,9 @@ public actor LGWebOSDriver: TVDriver {
 
     private func identify(
         endpoint: TVEndpoint, url: URL, trust: TLSPeerTrust
-    ) async throws -> (TVDevice, any WebSocketConnection) {
+    ) async throws -> (TVDevice, any WebSocketConnection, String?) {
         var socket = try await sockets.open(url, trust: trust)
-        var identifier = endpoint.host.lowercased()
+        var uuid: String?
         var name = "LG webOS TV"
         var address: MACAddress?
         do {
@@ -178,9 +188,9 @@ public actor LGWebOSDriver: TVDriver {
             let reply = try await socket.receiveJSON(timeout: .seconds(1))
             if reply["type"].string == "hello", reply["id"].string == "hello" {
                 let payload = reply["payload"]
-                if let uuid = payload["deviceUUID"].string {
-                    identifier = uuid.lowercased()
-                    address = MACAddress(rawValue: uuid)
+                if let reported = payload["deviceUUID"].string {
+                    uuid = reported.lowercased()
+                    address = MACAddress(rawValue: reported)
                 }
                 name = payload["deviceName"].string ?? name
             }
@@ -191,8 +201,8 @@ public actor LGWebOSDriver: TVDriver {
         }
         var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard]
         if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
-        return (TVDevice(id: TVIdentity(platform: .lg, identifier: identifier), name: name,
-                         endpoint: endpoint, capabilities: capabilities, wakeAddress: address), socket)
+        return (TVDevice(id: TVIdentity(platform: .lg, identifier: uuid ?? endpoint.host.lowercased()), name: name,
+                         endpoint: endpoint, capabilities: capabilities, wakeAddress: address), socket, uuid)
     }
 
     private func register(

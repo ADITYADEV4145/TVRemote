@@ -64,6 +64,7 @@ public enum Credential: Sendable, Equatable, Codable {
     case clientIdentity(Data)
     case samsungToken(String?, certificate: Data?)
     case webOSClientKey(String, certificate: Data?)
+    case webOSPlainClientKey(String, deviceUUID: String)
 }
 
 public enum PairingPrompt: Sendable, Equatable {
