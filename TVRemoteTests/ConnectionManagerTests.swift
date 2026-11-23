@@ -7,6 +7,8 @@ private actor LiveFixtureDriver: TVDriver {
     private var online = true
     private(set) var wakes = 0
     private(set) var keys: [TVRemoteCore.RemoteKey] = []
+    private(set) var probedPorts: [UInt16] = []
+    private var probeDevice: TVRemoteCore.TVDevice?
     private let firstSend = AsyncStream<Void>.makeStream()
     private let release = AsyncStream<Void>.makeStream()
     private var holdFirstSend = false
@@ -16,7 +18,15 @@ private actor LiveFixtureDriver: TVDriver {
     func waitForSend() async { for await _ in firstSend.stream { break } }
     func releaseSend() { release.continuation.finish() }
     nonisolated func discover() -> AsyncStream<TVRemoteCore.TVDevice> { AsyncStream { $0.finish() } }
-    func probe(_ endpoint: TVEndpoint) async throws -> TVRemoteCore.TVDevice { throw TVError.unreachable }
+    func serveProbe(for device: TVRemoteCore.TVDevice) {
+        probeDevice = device
+        probedPorts = []
+    }
+    func probe(_ endpoint: TVEndpoint) async throws -> TVRemoteCore.TVDevice {
+        probedPorts.append(endpoint.port)
+        guard let probeDevice, probeDevice.endpoint == endpoint else { throw TVError.unreachable }
+        return probeDevice
+    }
     func pair(_ tv: TVRemoteCore.TVDevice, prompt: PairingPromptHandler) async throws -> Credential { .token("paired") }
     func connect(_ tv: TVRemoteCore.TVDevice, _ cred: Credential) async throws { try requireOnline() }
     func send(_ key: TVRemoteCore.RemoteKey) async throws {
@@ -187,6 +197,38 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertNil(connection.pairingPrompt)
         XCTAssertEqual(connection.currentDevice, selected)
         XCTAssertEqual(connection.pairingCompletion, 1)
+    }
+
+    func testBareIPProbesSecureBeforePlainAndExplicitSecureDoesNotFallBack() async throws {
+        let host = "192.0.2.42"
+        let endpoints: [(TVPlatform, UInt16, UInt16)] = [(.samsung, 8002, 8001), (.lg, 3001, 3000)]
+        for (platform, secure, plain) in endpoints {
+            let (_, session, device, driver) = try await liveFixture(platform: platform, [.remoteKeys])
+            func endpointDevice(_ port: UInt16) -> TVRemoteCore.TVDevice {
+                .init(id: device.id, name: device.name, endpoint: TVEndpoint(host: host, port: port),
+                      capabilities: device.capabilities)
+            }
+
+            await driver.serveProbe(for: endpointDevice(plain))
+            do {
+                _ = try await session.find("\(host):\(secure)")
+                XCTFail("An explicit secure port must not find a plain-only TV.")
+            } catch LiveTVSession.Failure.notFound {}
+            let explicitProbes = await driver.probedPorts
+            XCTAssertEqual(explicitProbes, [secure])
+
+            await driver.serveProbe(for: endpointDevice(plain))
+            let plainMatch = try await session.find(host)
+            XCTAssertEqual(session.device(plainMatch.id)?.endpoint.port, plain)
+            let fallbackProbes = await driver.probedPorts
+            XCTAssertEqual(fallbackProbes, [secure, plain])
+
+            await driver.serveProbe(for: endpointDevice(secure))
+            let secureMatch = try await session.find(host)
+            XCTAssertEqual(session.device(secureMatch.id)?.endpoint.port, secure)
+            let secureProbes = await driver.probedPorts
+            XCTAssertEqual(secureProbes, [secure])
+        }
     }
 
     func testSearchRequiresAdvertisedCapability() async throws {

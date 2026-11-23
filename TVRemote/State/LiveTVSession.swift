@@ -58,15 +58,25 @@ final class LiveTVSession {
         guard let parts = URLComponents(string: "http://\(address)"), let host = parts.host,
               !host.isEmpty, parts.user == nil, parts.password == nil, parts.path.isEmpty,
               parts.query == nil, parts.fragment == nil else { throw Failure.address }
-        let candidates: [(TVPlatform, UInt16)]
+        let device: Device?
         if let port = parts.port {
             guard let value = UInt16(exactly: port),
                   let platform = switchPort(value) else { throw Failure.address }
-            candidates = [(platform, value)]
+            device = try? await manager.probe(TVEndpoint(host: host, port: value), platform: platform)
         } else {
-            candidates = [(.roku, 8060), (.googleTV, 6466), (.samsung, 8002), (.lg, 3001)]
+            let preferred = await probe(host, candidates: [(.roku, 8060), (.googleTV, 6466), (.samsung, 8002), (.lg, 3001)])
+            if preferred == nil && !Task.isCancelled {
+                device = await probe(host, candidates: [(.samsung, 8001), (.lg, 3000)])
+            } else {
+                device = preferred
+            }
         }
-        let device = await withTaskGroup(of: Device?.self) { group -> Device? in
+        guard let device else { throw Failure.notFound }
+        return remember(device)
+    }
+
+    private func probe(_ host: String, candidates: [(TVPlatform, UInt16)]) async -> Device? {
+        await withTaskGroup(of: Device?.self) { group -> Device? in
             for (platform, port) in candidates {
                 group.addTask { [manager] in
                     try? await manager.probe(TVEndpoint(host: host, port: port), platform: platform)
@@ -77,8 +87,6 @@ final class LiveTVSession {
             }
             return nil
         }
-        guard let device else { throw Failure.notFound }
-        return remember(device)
     }
 
     private func switchPort(_ port: UInt16) -> TVPlatform? {
