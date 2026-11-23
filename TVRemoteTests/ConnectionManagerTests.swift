@@ -74,6 +74,16 @@ private actor LiveFixtureDriver: TVDriver {
 
 @MainActor
 final class ConnectionManagerTests: XCTestCase {
+    #if os(iOS)
+    func testSimulatorCanPersistAndLoadATVPairingInKeychain() async throws {
+        let store = KeychainCredentialStore(service: "TVRemoteTests.\(UUID())")
+        let id = TVIdentity(platform: .samsung, identifier: "test")
+        try await store.save(.token("test-token"), for: id)
+        let stored = try await store.load(for: id)
+        XCTAssertEqual(stored, .token("test-token"))
+        try await store.remove(for: id)
+    }
+    #endif
     func testDiscoveryAndManualAddressUseStableDeviceIdentity() async {
         let connection = RemoteViewModel(driver: MockTVDriver())
         await connection.discover()
