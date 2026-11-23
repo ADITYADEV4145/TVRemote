@@ -186,16 +186,27 @@ public actor LGWebOSDriver: TVDriver {
         do {
             try await socket.sendJSON(["id": .string("hello"), "type": .string("hello")])
             let reply = try await socket.receiveJSON(timeout: .seconds(1))
-            if reply["type"].string == "hello", reply["id"].string == "hello" {
+            guard reply["id"].string == "hello" else { throw TVError.invalidResponse }
+            switch reply["type"].string {
+            case "hello":
                 let payload = reply["payload"]
                 if let reported = payload["deviceUUID"].string {
                     uuid = reported.lowercased()
                     address = MACAddress(rawValue: reported)
                 }
                 name = payload["deviceName"].string ?? name
+            case "error":
+                break
+            default:
+                throw TVError.invalidResponse
             }
         } catch {
             await socket.close()
+            try Task.checkCancellation()
+            guard endpoint.port == 3001 else {
+                if error is CancellationError { throw TVError.unreachable }
+                throw error
+            }
             if error is CancellationError { throw error }
             socket = try await sockets.open(url, trust: trust)
         }

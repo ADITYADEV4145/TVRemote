@@ -5,21 +5,33 @@ import TVRemoteKit
 private actor SocketTranscript: WebSocketConnection {
     nonisolated let peerCertificate: Data?
     private var inbound: [WebSocketMessage]
+    private let receiveGate: AsyncStream<Void>?
+    private let endReceive: AsyncStream<Void>.Continuation?
     private(set) var sent: [WebSocketMessage] = []
     private(set) var closed = false
 
-    init(_ frames: [String], certificate: Data? = nil) {
+    init(_ frames: [String], certificate: Data? = nil, waitForClose: Bool = false) {
         self.inbound = frames.map(WebSocketMessage.text)
         self.peerCertificate = certificate
+        let pending = waitForClose ? AsyncStream<Void>.makeStream() : nil
+        self.receiveGate = pending?.stream
+        self.endReceive = pending?.continuation
     }
 
     func send(_ message: WebSocketMessage) { sent.append(message) }
-    func receive() throws -> WebSocketMessage {
+    func receive() async throws -> WebSocketMessage {
+        if inbound.isEmpty, let receiveGate {
+            for await _ in receiveGate {}
+            throw CancellationError()
+        }
         guard !inbound.isEmpty else { throw TVError.unreachable }
         return inbound.removeFirst()
     }
     func ping() {}
-    func close() { closed = true }
+    func close() {
+        closed = true
+        endReceive?.finish()
+    }
 
     func outbound() throws -> [SocketJSON] {
         try sent.map {
@@ -285,6 +297,35 @@ private struct SocketDiscovery: DiscoverySource {
     }
     #expect(try await control.outbound().map { $0["type"].string } == ["hello"])
     #expect(await control.closed)
+}
+
+@Test(arguments: [true, false])
+func lgPlainReconnectRecoversAfterHelloTimeoutOrTransportFailure(_ waitForClose: Bool) async throws {
+    let identity = #"{"id":"hello","type":"hello","payload":{"deviceUUID":"original"}}"#
+    let registered = #"{"id":"register","type":"registered","payload":{"client-key":"paired-key"}}"#
+    let unavailable = SocketTranscript([], waitForClose: waitForClose)
+    let restored = SocketTranscript([identity, registered])
+    let sockets = SocketScript([.success(unavailable), .success(restored)])
+    let tv = TVDevice(id: TVIdentity(platform: .lg, identifier: "original"), name: "LG",
+                      endpoint: TVEndpoint(host: "tv.local", port: 3000), capabilities: .remoteKeys)
+    let credentials = MemoryCredentialStore()
+    await credentials.save(.webOSPlainClientKey("paired-key", deviceUUID: "original"), for: tv.id)
+    let manager = ConnectionManager(drivers: [TVDriverFactory(platform: .lg) {
+        LGWebOSDriver(sockets: sockets)
+    }], credentials: credentials, retryDelays: [.zero])
+    var states = manager.state.makeAsyncIterator()
+
+    try await manager.connect(tv)
+    #expect(await states.next() == .idle)
+    #expect(await states.next() == .connecting)
+    #expect(await states.next() == .degraded)
+    #expect(await states.next() == .recovering)
+    #expect(await states.next() == .ready)
+    #expect(await unavailable.closed)
+    #expect(try await unavailable.outbound().map { $0["type"].string } == ["hello"])
+    let requests = try await restored.outbound()
+    #expect(requests.map { $0["type"].string } == ["hello", "register"])
+    #expect(requests.last?["payload"]["client-key"].string == "paired-key")
 }
 
 @Test func wakeOnLANSendsStandardBroadcastPacket() async throws {

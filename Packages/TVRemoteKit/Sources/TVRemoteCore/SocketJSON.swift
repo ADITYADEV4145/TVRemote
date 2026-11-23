@@ -82,12 +82,16 @@ extension WebSocketConnection {
             group.addTask(operation: operation)
             group.addTask {
                 try await Task.sleep(for: timeout)
-                await close()
                 throw TVError.timedOut
             }
             defer { group.cancelAll() }
-            guard let result = try await group.next() else { throw TVError.unreachable }
-            return result
+            do {
+                guard let result = try await group.next() else { throw TVError.unreachable }
+                return result
+            } catch TVError.timedOut {
+                await close()
+                throw TVError.timedOut
+            }
         }
     }
 }
