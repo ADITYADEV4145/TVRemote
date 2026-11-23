@@ -18,6 +18,7 @@ actor GoogleTVRemoteSession {
     private var fieldCounter: UInt64?
 
     var supportsText: Bool { features & Feature.ime != 0 }
+    var supportsAppLinks: Bool { features & Feature.link != 0 }
 
     init(
         wire: GoogleTVWire, clock: any ConnectionClock = SystemConnectionClock(),
@@ -99,7 +100,7 @@ actor GoogleTVRemoteSession {
 
     func launch(_ link: String) async throws {
         try checkConnection()
-        guard features & Feature.link != 0 else { throw TVError.notSupported }
+        guard supportsAppLinks else { throw TVError.notSupported }
         try await send(90, Proto([(1, Proto.string(link))]))
     }
 

@@ -196,6 +196,7 @@ private func makeDriver(
         #expect(prompt == .enterCode(length: 6))
         return .code("4a1234")
     }
+    #expect(await manager.currentDevice?.capabilities.contains(.launch) == true)
 
     #expect(await pair.writes == [
         hex("1c 080210c8015215 0a0961747672656d6f7465 1208545652656d6f7465"),
@@ -230,6 +231,20 @@ private func makeDriver(
         .probe, .pairing(client), .control(client, peer: peer), .control(client, peer: peer)
     ])
     #expect(await transport.openings.map(\.endpoint) == [pairingEndpoint, pairingEndpoint, saved, saved])
+}
+
+@Test func googleTVAdvertisesAppLinksOnlyWhenNegotiated() async throws {
+    let pair = TranscriptTLSStream(pairingReplies + hex("2a 080210c801ca0222 0a20 " + secret))
+    let noLinks = hex("04 0a020867") + remoteReady.dropFirst(6)
+    let remote = TranscriptTLSStream(noLinks)
+    let transport = TranscriptGoogleTVTransport([connection(TranscriptTLSStream()), connection(pair), connection(remote)])
+    let driver = makeDriver(transport)
+    let tv = try await driver.probe(saved)
+    #expect(!tv.capabilities.contains(.launch))
+    let credential = try await driver.pair(tv) { _ in .code("4A1234") }
+    try await driver.connect(tv, credential)
+    #expect(await driver.connectedDevice()?.capabilities.contains(.launch) == false)
+    await #expect(throws: TVError.notSupported) { try await driver.launch(AppID(rawValue: "app://test")) }
 }
 
 @Test func googleTVReportsDeclinedPairingBeforeRequestingACode() async throws {

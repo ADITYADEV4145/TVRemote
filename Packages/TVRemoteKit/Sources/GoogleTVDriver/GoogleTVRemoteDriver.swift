@@ -58,7 +58,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
             id: identity(for: connection.peer),
             name: connection.deviceName ?? "Google TV",
             endpoint: TVEndpoint(host: endpoint.host, port: Self.controlPort),
-            capabilities: [.remoteKeys, .launch, .controlWake, .inputMenu]
+            capabilities: [.remoteKeys, .controlWake, .inputMenu]
         )
     }
 
@@ -108,7 +108,8 @@ public actor GoogleTVRemoteDriver: TVDriver {
                 let wire = GoogleTVWire(stream: connection.stream)
                 let remote = GoogleTVRemoteSession(wire: wire)
                 try await remote.start()
-                var capabilities: TVCapabilities = [.remoteKeys, .launch, .controlWake, .inputMenu]
+                var capabilities: TVCapabilities = [.remoteKeys, .controlWake, .inputMenu]
+                if await remote.supportsAppLinks { capabilities.insert(.launch) }
                 if await remote.supportsText { capabilities.insert(.keyboard) }
                 try Task.checkCancellation()
                 guard generation == token else { throw CancellationError() }
