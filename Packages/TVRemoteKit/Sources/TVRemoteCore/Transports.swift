@@ -5,10 +5,12 @@ public struct HTTPRequest: Sendable, Equatable {
 
     public let method: Method
     public let url: URL
+    public let trust: TLSPeerTrust
 
-    public init(_ method: Method, url: URL) {
+    public init(_ method: Method, url: URL, trust: TLSPeerTrust = .system) {
         self.method = method
         self.url = url
+        self.trust = trust
     }
 }
 
@@ -31,14 +33,32 @@ public enum WebSocketMessage: Sendable, Equatable {
     case data(Data)
 }
 
+public enum TLSPeerTrust: Sendable, Equatable {
+    case system
+    case pairing
+    case pinned(Data)
+}
+
 public protocol WebSocketConnection: Sendable {
+    var peerCertificate: Data? { get }
     func send(_ message: WebSocketMessage) async throws
     func receive() async throws -> WebSocketMessage
+    func ping() async throws
     func close() async
 }
 
 public protocol WebSocketTransport: Sendable {
-    func open(_ url: URL) async throws -> any WebSocketConnection
+    func open(_ url: URL, trust: TLSPeerTrust) async throws -> any WebSocketConnection
+}
+
+extension WebSocketConnection {
+    public var peerCertificate: Data? { nil }
+}
+
+extension WebSocketTransport {
+    public func open(_ url: URL) async throws -> any WebSocketConnection {
+        try await open(url, trust: .system)
+    }
 }
 
 public protocol TLSByteStream: Sendable {

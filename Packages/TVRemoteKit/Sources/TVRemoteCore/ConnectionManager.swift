@@ -66,8 +66,9 @@ public actor ConnectionManager {
             if credential != .none { try await credentials.save(credential, for: tv.id) }
             try ensureCurrent(token)
             try await pairingDriver.connect(tv, credential)
+            let confirmed = await pairingDriver.connectedDevice()
             try ensureCurrent(token)
-            markReady(driver: pairingDriver, tv: tv)
+            markReady(driver: pairingDriver, tv: confirmed?.id == tv.id ? confirmed ?? tv : tv)
         } catch {
             fail(error, token: token)
             throw error
@@ -222,16 +223,18 @@ public actor ConnectionManager {
                 do {
                     let fresh = factory.makeDriver()
                     try await fresh.connect(tv, credential)
+                    let confirmed = await fresh.connectedDevice()
+                    let device = confirmed?.id == tv.id ? confirmed ?? tv : tv
                     try ensureCurrent(token)
                     do {
                         try await operation(fresh)
                         try ensureCurrent(token)
-                        markReady(driver: fresh, tv: tv)
+                        markReady(driver: fresh, tv: device)
                     } catch {
                         if let failure = error as? TVError, !Self.isRecoverable(failure),
                            failure != .credentialRejected, failure != .pairingRequired {
                             try ensureCurrent(token)
-                            markReady(driver: fresh, tv: tv)
+                            markReady(driver: fresh, tv: device)
                         }
                         throw error
                     }
@@ -345,8 +348,9 @@ public actor ConnectionManager {
         let driver = factory.makeDriver()
         do {
             try await driver.connect(tv, credential)
+            let confirmed = await driver.connectedDevice()
             try Task.checkCancellation()
-            return .ready(driver, tv)
+            return .ready(driver, confirmed?.id == tv.id ? confirmed ?? tv : tv)
         } catch {
             if error as? TVError == .asleep { return .standby(tv) }
             return .failure(error)

@@ -12,7 +12,7 @@ public final class URLSessionHTTPTransport: HTTPTransport {
         configuration.timeoutIntervalForResource = timeout
         configuration.urlCache = nil
         configuration.httpCookieStorage = nil
-        session = URLSession(configuration: configuration, delegate: NoRedirects(), delegateQueue: nil)
+        session = URLSession(configuration: configuration, delegate: TVSessionDelegate(trust: .system), delegateQueue: nil)
     }
 
     deinit { session.invalidateAndCancel() }
@@ -20,27 +20,16 @@ public final class URLSessionHTTPTransport: HTTPTransport {
     public func request(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, cachePolicy: .reloadIgnoringLocalCacheData)
         urlRequest.httpMethod = request.method.rawValue
+        let delegate = TVSessionDelegate(trust: request.trust)
+        let connection = request.trust == .system ? session
+            : URLSession(configuration: session.configuration, delegate: delegate, delegateQueue: nil)
+        defer { if connection !== session { connection.invalidateAndCancel() } }
         do {
-            let (body, response) = try await session.data(for: urlRequest)
+            let (body, response) = try await connection.data(for: urlRequest)
             guard let response = response as? HTTPURLResponse else { throw TVError.invalidResponse }
             return HTTPResponse(status: response.statusCode, body: body)
-        } catch let error as URLError {
-            switch error.code {
-            case .timedOut: throw TVError.timedOut
-            case .cancelled: throw CancellationError()
-            case .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet:
-                throw TVError.unreachable
-            default: throw error
-            }
+        } catch {
+            throw delegate.map(error)
         }
-    }
-}
-
-private final class NoRedirects: NSObject, URLSessionTaskDelegate {
-    func urlSession(
-        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest
-    ) async -> URLRequest? {
-        nil
     }
 }

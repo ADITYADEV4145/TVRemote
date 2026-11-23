@@ -44,12 +44,16 @@ public struct TVDevice: Sendable, Hashable, Codable, Identifiable {
     public let name: String
     public let endpoint: TVEndpoint
     public let capabilities: TVCapabilities
+    public let wakeAddress: MACAddress?
 
-    public init(id: TVIdentity, name: String, endpoint: TVEndpoint, capabilities: TVCapabilities) {
+    public init(
+        id: TVIdentity, name: String, endpoint: TVEndpoint, capabilities: TVCapabilities, wakeAddress: MACAddress? = nil
+    ) {
         self.id = id
         self.name = name
         self.endpoint = endpoint
         self.capabilities = capabilities
+        self.wakeAddress = wakeAddress
     }
 }
 
@@ -58,6 +62,9 @@ public enum Credential: Sendable, Equatable, Codable {
     case token(String)
     case clientKey(String)
     case clientIdentity(Data)
+    case samsungToken(String?, certificate: Data?)
+    case webOSClientKey(String, certificate: Data?)
+    case webOSPlainClientKey(String, deviceUUID: String)
 }
 
 public enum PairingPrompt: Sendable, Equatable {
@@ -107,6 +114,7 @@ public protocol TVDriver: Sendable {
     func probe(_ endpoint: TVEndpoint) async throws -> TVDevice
     func pair(_ tv: TVDevice, prompt: PairingPromptHandler) async throws -> Credential
     func connect(_ tv: TVDevice, _ cred: Credential) async throws
+    func connectedDevice() async -> TVDevice?
     func send(_ key: RemoteKey) async throws
     func launch(_ app: AppID) async throws
     func search(_ query: String) async throws
@@ -116,6 +124,8 @@ public protocol TVDriver: Sendable {
 }
 
 extension TVDriver {
+    public func connectedDevice() async -> TVDevice? { nil }
+
     public func pair(_ tv: TVDevice) async throws -> Credential {
         try await pair(tv) { _ in throw TVError.pairingRequired }
     }
