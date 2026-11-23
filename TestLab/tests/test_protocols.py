@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pytest
-from aiohttp import ClientConnectionError, ClientSession, ClientTimeout
+from aiohttp import ClientConnectionError, ClientSession, ClientTimeout, web
 from androidtvremote2 import AndroidTVRemote
 from androidtvremote2.exceptions import CannotConnect, ConnectionClosed
 from androidtvremote2.polo_pb2 import OuterMessage
@@ -129,6 +129,43 @@ async def test_chaos_rejects_cross_origin_and_non_json_requests(lab):
         async with client.post(endpoint, json={"action": "sleep"}, headers={"Origin": origin}) as response:
             assert response.status == 200
             assert (await response.json())["sleeping"]
+
+
+async def test_slow_chaos_body_does_not_block_google_power_off(lab, monkeypatch):
+    reading = asyncio.Event()
+    finish_body = asyncio.Event()
+    notified = asyncio.Event()
+    original_json = web.Request.json
+
+    async def observe_json(request):
+        reading.set()
+        return await original_json(request)
+
+    async def chunks():
+        yield b'{"action":'
+        await finish_body.wait()
+        yield b'"sleep"}'
+
+    async def notify():
+        notified.set()
+
+    monkeypatch.setattr(web.Request, "json", observe_json)
+    endpoint = f"{url((lab.host, lab.control_port))}/tvs/roku/chaos"
+    async with ClientSession() as client:
+        async def post():
+            async with client.post(endpoint, data=chunks(),
+                                   headers={"Content-Type": "application/json"}) as response:
+                return response.status
+
+        slow_post = asyncio.create_task(post())
+        try:
+            await asyncio.wait_for(reading.wait(), 1)
+            await asyncio.wait_for(lab.power_off_google(notify), 2)
+            assert notified.is_set() and lab.tvs["google"].sleeping
+            assert not slow_post.done()
+        finally:
+            finish_body.set()
+            assert await slow_post == 200
 
 
 async def test_chaos_endpoint_ip_changes_network_and_sleep(lab):

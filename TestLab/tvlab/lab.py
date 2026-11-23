@@ -18,6 +18,7 @@ DEFAULT_PORTS = {
     "samsung": {"http": 8001, "https": 8002}, "lg": {"http": 3000, "https": 3001},
 }
 ROUTES = {"roku": roku.routes, "samsung": samsung_routes, "lg": lg_routes}
+CHAOS_BODY_TIMEOUT = 5
 
 
 class Lab:
@@ -161,9 +162,18 @@ class Lab:
             raise web.HTTPForbidden(text="Cross-origin chaos requests are not allowed")
         if request.content_type != "application/json":
             raise web.HTTPUnsupportedMediaType(text="Expected application/json")
+        try:
+            async with asyncio.timeout(CHAOS_BODY_TIMEOUT):
+                payload = await request.json()
+        except TimeoutError as exc:
+            raise web.HTTPRequestTimeout(text="Timed out reading the chaos request") from exc
+        except (ValueError, LookupError) as exc:
+            raise web.HTTPBadRequest(text="Expected a valid JSON object") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("action"), str):
+            raise web.HTTPBadRequest(text="Expected a JSON object with a string action")
         async with self.lock:
             try:
-                await self.apply(name, await request.json())
+                await self.apply(name, payload)
             except (KeyError, TypeError, ValueError, OSError) as exc:
                 raise web.HTTPBadRequest(text=str(exc)) from exc
         return web.json_response(self.snapshot(name))
