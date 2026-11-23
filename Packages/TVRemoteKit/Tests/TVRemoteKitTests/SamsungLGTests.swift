@@ -50,14 +50,18 @@ private actor SocketScript: WebSocketTransport {
 private actor SamsungDeviceInfo: HTTPTransport {
     private(set) var requests: [HTTPRequest] = []
     let port: Int?
+    let mac: String
 
-    init(port: Int? = 8002) { self.port = port }
+    init(port: Int? = 8002, mac: String = "02:11:22:33:44:55") {
+        self.port = port
+        self.mac = mac
+    }
 
     func request(_ request: HTTPRequest) throws -> HTTPResponse {
         requests.append(request)
         if let port, request.url.port != port { throw TVError.unreachable }
         return HTTPResponse(status: 200, body: Data("""
-            {"device":{"duid":"uuid:samsung-1","name":"Living Room","wifiMac":"02:11:22:33:44:55"}}
+            {"device":{"duid":"uuid:samsung-1","name":"Living Room","wifiMac":"\(mac)"}}
             """.utf8))
     }
 }
@@ -159,6 +163,29 @@ private struct SocketDiscovery: DiscoverySource {
     #expect(attempt.url.host == "new.local")
     #expect(attempt.url.port == 8001)
     #expect(await driver.connectedDevice()?.endpoint.port == 8001)
+}
+
+@Test func samsungReconnectPreservesRestoredWakeAddressWhenDeviceInfoHasNoUsableMAC() async throws {
+    let pin = Data([0x42])
+    let http = SamsungDeviceInfo(mac: "00:00:00:00:00:00")
+    let sockets = SocketScript([.success(SocketTranscript([#"{"event":"ms.channel.connect"}"#], certificate: pin))])
+    let datagram = DatagramTranscript()
+    let wake = WakeOnLAN(transport: datagram)
+    let store = MemoryCredentialStore()
+    let identity = TVIdentity(platform: .samsung, identifier: "uuid:samsung-1")
+    let address = try #require(MACAddress(rawValue: "02:11:22:33:44:55"))
+    let restored = TVDevice(id: identity, name: "Saved TV", endpoint: TVEndpoint(host: "tv.local", port: 8002),
+                            capabilities: .remoteKeys, wakeAddress: address)
+    await store.save(.samsungToken("token", certificate: pin), for: identity)
+    let driver = SamsungTizenDriver(http: http, sockets: sockets, wake: wake)
+    let manager = ConnectionManager(drivers: [TVDriverFactory(platform: .samsung) { driver }], credentials: store)
+
+    try await manager.connect(restored)
+    let connected = try #require(await manager.currentDevice)
+    #expect(connected.wakeAddress == address)
+    #expect(connected.capabilities.contains(.networkWake))
+    try await driver.wake(connected)
+    #expect(await datagram.data == address.magicPacket)
 }
 
 @Test func lgRegistrationCommandsAndCredentialReuse() async throws {

@@ -73,7 +73,11 @@ public actor SamsungTizenDriver: TVDriver {
                 throw error
             }
             connection = socket
-            device = live
+            let address = live.wakeAddress ?? tv.wakeAddress
+            var capabilities = live.capabilities
+            if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
+            device = TVDevice(id: live.id, name: live.name, endpoint: live.endpoint,
+                              capabilities: capabilities, wakeAddress: address)
             updates.yield(.ready)
         } catch {
             updates.yield(error as? TVError == .credentialRejected ? .needsRepair : .degraded)
