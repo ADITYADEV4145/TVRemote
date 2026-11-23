@@ -18,7 +18,7 @@ final class RemoteViewModel {
     private(set) var currentDevice: TVDevice?
     private(set) var pairingDevice: TVDevice?
     private(set) var pairingPrompt: SetupPairing?
-    private(set) var approvalCompletion = 0
+    private(set) var pairingCompletion = 0
     private(set) var isDiscovering = false
     private(set) var isConnecting = false
     private(set) var feedback: String?
@@ -337,9 +337,9 @@ final class RemoteViewModel {
                     return try await self.respond(to: prompt, device: device, attempt: attempt)
                 }
                 guard let self, self.pairingAttempt == attempt else { return false }
-                let approved = self.pairingPrompt == .approval
+                let needsCompletionEvent = self.pairingPrompt != .code
                 await self.didConnect(using: live)
-                if approved { self.approvalCompletion += 1 }
+                if needsCompletionEvent { self.pairingCompletion += 1 }
                 self.isConnecting = false
                 self.pairingTask = nil
                 return true

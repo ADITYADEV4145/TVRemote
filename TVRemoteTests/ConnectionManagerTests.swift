@@ -177,6 +177,18 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(keys, [.volumeUp, .left, .volumeDown])
     }
 
+    func testAutomaticPairingPublishesSetupCompletionWithoutPrompt() async throws {
+        let (connection, session, device, _) = try await liveFixture([.remoteKeys])
+        let selected = session.remember(device)
+        let connectedSynchronously = await connection.select(selected)
+        XCTAssertFalse(connectedSynchronously)
+        for _ in 0..<100 where connection.isConnecting { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertFalse(connection.isConnecting)
+        XCTAssertNil(connection.pairingPrompt)
+        XCTAssertEqual(connection.currentDevice, selected)
+        XCTAssertEqual(connection.pairingCompletion, 1)
+    }
+
     private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities) async throws
         -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
         let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),

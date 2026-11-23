@@ -79,7 +79,7 @@ struct SetupScreen: View {
         .onChange(of: connection.pairingPrompt) {
             if let prompt = connection.pairingPrompt { page = prompt == .approval ? .approval : .code }
         }
-        .onChange(of: connection.approvalCompletion) { page = .ready }
+        .onChange(of: connection.pairingCompletion) { page = .ready }
         .interactiveDismissDisabled(connection.isConnecting)
         .onDisappear { connection.cancelPairing() }
     }
@@ -238,7 +238,7 @@ struct DevicesScreen: View {
             Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
             ConnectionMessage()
         }
-        .onChange(of: connection.approvalCompletion) { connected() }
+        .onChange(of: connection.pairingCompletion) { connected() }
     }
 }
 
