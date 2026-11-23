@@ -127,7 +127,37 @@ public actor SamsungTizenDriver: TVDriver {
         ])
     }
 
-    public func launch(_ app: AppID) async throws { throw TVError.notSupported }
+    public func launch(_ app: AppID) async throws {
+        guard !app.rawValue.isEmpty else { throw TVError.invalidCommand }
+        guard let connection else { throw TVError.notConnected }
+        try await connection.sendJSON([
+            "method": .string("ms.channel.emit"),
+            "params": .object([
+                "event": .string("ed.apps.launch"), "to": .string("host"),
+                "data": .object(["appId": .string(app.rawValue), "action_type": .string("DEEP_LINK")])
+            ])
+        ])
+    }
+
+    public func apps() async throws -> [TVApp] {
+        guard let connection else { throw TVError.notConnected }
+        try await connection.sendJSON([
+            "method": .string("ms.channel.emit"),
+            "params": .object(["event": .string("ed.installedApp.get"), "to": .string("host")])
+        ])
+        let deadline = ContinuousClock.now + .seconds(3)
+        while ContinuousClock.now < deadline {
+            let reply = try await connection.receiveJSON(timeout: ContinuousClock.now.duration(to: deadline))
+            if reply["event"].string == "ms.error" { throw TVError.notSupported }
+            guard reply["event"].string == "ed.installedApp.get" else { continue }
+            guard case .array(let apps) = reply["data"]["data"] else { throw TVError.invalidResponse }
+            return apps.compactMap {
+                guard let id = $0["appId"].string, let name = $0["name"].string else { return nil }
+                return TVApp(id: AppID(rawValue: id), name: name)
+            }
+        }
+        throw TVError.timedOut
+    }
     public func search(_ query: String) async throws { throw TVError.notSupported }
 
     public func wake(_ tv: TVDevice) async throws {
@@ -160,7 +190,7 @@ public actor SamsungTizenDriver: TVDriver {
                     throw TVError.invalidResponse
                 }
                 let address = (info["wifiMac"].string ?? info["mac"].string).flatMap(MACAddress.init(rawValue:))
-                var capabilities: TVCapabilities = [.remoteKeys, .inputMenu]
+                var capabilities: TVCapabilities = [.remoteKeys, .inputMenu, .launch, .appList]
                 if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
                 return TVDevice(id: TVIdentity(platform: .samsung, identifier: id),
                                 name: info["name"].string ?? json["name"].string ?? "Samsung TV",

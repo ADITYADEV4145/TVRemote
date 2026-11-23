@@ -56,18 +56,46 @@ struct RemoteAppItem: Identifiable {
         Self(id: "prime-video", name: "Prime Video", monogram: "P"),
         Self(id: "disney-plus", name: "Disney+", monogram: "D")
     ]
+    static let googleLinks = [
+        Self(id: "https://www.youtube.com/tv", name: "YouTube", monogram: "▶"),
+        Self(id: "https://www.netflix.com", name: "Netflix", monogram: "N")
+    ]
 }
 
 struct AppsScreen: View {
     @Environment(RemoteViewModel.self) private var connection
     @AppStorage("favoriteTVApps") private var favorites = ""
+    @AppStorage("favoriteTVAppsByDevice") private var savedFavorites = Data()
     @State private var query = ""
+    @State private var loaded: [TVDevice.ID: [RemoteAppItem]] = [:]
+    @State private var failed: TVDevice.ID?
     var forceUnavailable = false
     let setup: () -> Void
 
-    private var catalog: [RemoteAppItem] { connection.isDemo && !forceUnavailable ? RemoteAppItem.demo : [] }
+    private var catalog: [RemoteAppItem] {
+        guard !forceUnavailable else { return [] }
+        if connection.isDemo { return RemoteAppItem.demo }
+        if connection.supportsAppLinks { return RemoteAppItem.googleLinks }
+        return connection.currentDevice.flatMap { loaded[$0.id] } ?? []
+    }
+
+    private var favoriteOrder: Binding<String> {
+        guard !connection.isDemo, let id = connection.currentDevice?.id else { return $favorites }
+        return Binding {
+            decodeFavorites()[id] ?? ""
+        } set: { value in
+            var orders = decodeFavorites()
+            orders[id] = value
+            if let data = try? JSONEncoder().encode(orders) { savedFavorites = data }
+        }
+    }
+
+    private func decodeFavorites() -> [String: String] {
+        (try? JSONDecoder().decode([String: String].self, from: savedFavorites)) ?? [:]
+    }
+
     private var pinned: [RemoteAppItem] {
-        favorites.split(separator: ",").compactMap { id in catalog.first { $0.id == id } }
+        favoriteOrder.wrappedValue.split(separator: ",").compactMap { id in catalog.first { $0.id == id } }
     }
     private var matches: [RemoteAppItem] {
         catalog.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
@@ -78,11 +106,15 @@ struct AppsScreen: View {
             ScreenHeading("", "Apps & favorites", connection.currentDevice.map { "Launch on \($0.name)." } ?? "Choose a TV to launch apps.")
             if catalog.isEmpty {
                 HeroCard(icon: "square.grid.2x2", title: "Apps unavailable",
-                         detail: "This connection doesn’t supply an installed-app list. Use Home to browse apps on your TV.")
+                         detail: unavailableDetail)
                 Button("Open TV Home") { Task { await connection.send(.home) } }
                     .buttonStyle(PrimaryActionStyle()).disabled(!connection.canControl)
             } else {
-                SupportingCopy(title: "Demo catalog", detail: "Sample apps for simulated TVs, not an installed-app list from a real TV.")
+                if connection.isDemo {
+                    SupportingCopy(title: "Demo catalog", detail: "Sample apps for simulated TVs, not an installed-app list from a real TV.")
+                } else if connection.supportsAppLinks {
+                    SupportingCopy(title: "App shortcuts", detail: "Google TV does not share its installed apps. These links open on the TV when supported.")
+                }
                 TextField("Search apps", text: $query)
                     .padding(16).background(RemoteTheme.surface, in: RoundedRectangle(cornerRadius: 20))
                     .autocorrectionDisabled()
@@ -111,7 +143,7 @@ struct AppsScreen: View {
                 HStack {
                     Text("All apps").font(.title3.weight(.semibold))
                     Spacer()
-                    NavigationLink("Edit favorites") { FavoritesScreen(favorites: $favorites, catalog: catalog) }
+                    NavigationLink("Edit favorites") { FavoritesScreen(favorites: favoriteOrder, catalog: catalog) }
                         .frame(minHeight: 44)
                 }
                 if matches.isEmpty { Text("No apps match your search.").foregroundStyle(RemoteTheme.muted) }
@@ -130,6 +162,28 @@ struct AppsScreen: View {
             }
             ConnectionMessage()
         }
+        .task(id: connection.canControl ? connection.currentDevice?.id : nil) {
+            guard !forceUnavailable, connection.canControl, connection.supportsAppList,
+                  let id = connection.currentDevice?.id else { return }
+            do {
+                let apps = try await connection.loadApps()
+                try Task.checkCancellation()
+                loaded[id] = apps.map { RemoteAppItem(id: $0.id.rawValue, name: $0.name, monogram: String($0.name.prefix(1))) }
+                failed = nil
+            } catch is CancellationError {} catch {
+                guard !Task.isCancelled else { return }
+                failed = id
+            }
+        }
+    }
+
+    private var unavailableDetail: String {
+        if !forceUnavailable, connection.supportsAppList, let id = connection.currentDevice?.id {
+            if failed == id { return "Could not read the installed apps from this TV. Use Home to browse apps on your TV." }
+            if loaded[id]?.isEmpty == true { return "This TV did not list any apps." }
+            if connection.canControl { return "Looking up installed apps…" }
+        }
+        return "This connection doesn’t supply an installed-app list. Use Home to browse apps on your TV."
     }
 }
 

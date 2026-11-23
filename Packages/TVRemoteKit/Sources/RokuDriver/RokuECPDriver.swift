@@ -88,12 +88,23 @@ public actor RokuECPDriver: TVDriver {
     }
 
     public func inputs() async throws -> [TVInput] {
-        let endpoint = try await verifiedEndpoint()
-        let body = try await request(.get, endpoint: endpoint, path: "/query/apps")
-        return try ECPAppList.parse(body).compactMap { entry in
+        try await appEntries().compactMap { entry in
             guard entry.type == "tvin", entry.id.hasPrefix("tvinput.") else { return nil }
             return TVInput(id: entry.id, name: entry.name)
         }
+    }
+
+    public func apps() async throws -> [TVApp] {
+        try await appEntries().compactMap { entry in
+            guard entry.type != "tvin", !entry.id.hasPrefix("tvinput.") else { return nil }
+            return TVApp(id: AppID(rawValue: entry.id), name: entry.name)
+        }
+    }
+
+    private func appEntries() async throws -> [ECPAppList.Entry] {
+        let endpoint = try await verifiedEndpoint()
+        let body = try await request(.get, endpoint: endpoint, path: "/query/apps")
+        return try ECPAppList.parse(body)
     }
 
     public func selectInput(_ input: TVInput) async throws {
@@ -203,7 +214,7 @@ private final class DeviceInfo: NSObject, XMLParserDelegate {
         let identifier = info.first("udn", "serial-number", "device-id")
         guard let identifier else { throw TVError.invalidResponse }
         let name = info.first("friendly-device-name", "user-device-name", "default-device-name", "model-name") ?? "Roku"
-        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard]
+        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard, .appList]
         if info.fields["search-enabled"] != "false" { capabilities.insert(.search) }
         if info.fields["is-tv"] == "true" { capabilities.formUnion([.networkWake, .inputSelection]) }
         let device = TVDevice(

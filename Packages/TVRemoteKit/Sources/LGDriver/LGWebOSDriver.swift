@@ -164,6 +164,15 @@ public actor LGWebOSDriver: TVDriver {
         _ = try await request("tv/switchInput", ["inputId": .string(input.id)])
     }
 
+    public func apps() async throws -> [TVApp] {
+        let result = try await request("com.webos.applicationManager/listLaunchPoints")
+        guard case .array(let apps) = result["launchPoints"] else { throw TVError.invalidResponse }
+        return apps.compactMap {
+            guard let id = $0["id"].string, let name = $0["title"].string else { return nil }
+            return TVApp(id: AppID(rawValue: id), name: name)
+        }
+    }
+
     public func search(_ query: String) async throws { throw TVError.notSupported }
 
     public func wake(_ tv: TVDevice) async throws {
@@ -232,7 +241,7 @@ public actor LGWebOSDriver: TVDriver {
             if error is CancellationError { throw error }
             socket = try await sockets.open(url, trust: trust)
         }
-        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard, .inputSelection]
+        var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard, .inputSelection, .appList]
         if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
         return (TVDevice(id: TVIdentity(platform: .lg, identifier: uuid ?? endpoint.host.lowercased()), name: name,
                          endpoint: endpoint, capabilities: capabilities, wakeAddress: address), socket, uuid)
@@ -342,7 +351,7 @@ public actor LGWebOSDriver: TVDriver {
         "permissions": .array([
             "CONTROL_AUDIO", "CONTROL_INPUT_JOYSTICK", "CONTROL_INPUT_MEDIA_PLAYBACK", "CONTROL_INPUT_TV",
             "CONTROL_MOUSE_AND_KEYBOARD", "CONTROL_POWER", "LAUNCH", "READ_CURRENT_CHANNEL", "READ_INPUT_DEVICE_LIST",
-            "READ_NETWORK_STATE", "WRITE_NOTIFICATION_TOAST"
+            "READ_NETWORK_STATE", "READ_INSTALLED_APPS", "WRITE_NOTIFICATION_TOAST"
         ].map(SocketJSON.string)),
         "signed": .object([
             "appId": .string("com.tvremote.remote"),

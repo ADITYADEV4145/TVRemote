@@ -130,6 +130,10 @@ public actor ConnectionManager {
         try await read { try await $0.inputs() }
     }
 
+    public func apps() async throws -> [TVApp] {
+        try await read { try await $0.apps() }
+    }
+
     public func selectInput(_ input: TVInput) async throws {
         try await perform { try await $0.selectInput(input) }
     }

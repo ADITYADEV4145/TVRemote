@@ -72,6 +72,10 @@ final class RemoteViewModel {
     }
     var supportsInputMenu: Bool { capabilities.contains(.inputMenu) }
     var supportsInputSelection: Bool { capabilities.contains(.inputSelection) }
+    var supportsAppList: Bool { capabilities.contains(.appList) }
+    var supportsAppLinks: Bool {
+        capabilities.contains(.launch) && currentDevice.flatMap { live?.device($0.id)?.id.platform } == .googleTV
+    }
 
     private var capabilities: TVCapabilities {
         guard let id = currentDevice?.id else { return [] }
@@ -294,6 +298,12 @@ final class RemoteViewModel {
         guard canControl, supportsInputSelection, let live else { throw TVError.notSupported }
         await healthCheck?.value
         return try await live.manager.inputs()
+    }
+
+    func loadApps() async throws -> [TVApp] {
+        guard canControl, supportsAppList, let live else { throw TVError.notSupported }
+        await healthCheck?.value
+        return try await live.manager.apps()
     }
 
     func selectInput(_ input: TVInput) async {
