@@ -231,6 +231,23 @@ final class ConnectionManagerTests: XCTestCase {
         }
     }
 
+    func testBareIPDoesNotFindPlainLGWithoutAReportedUUID() async throws {
+        let host = "192.0.2.42"
+        let (_, session, _, driver) = try await liveFixture([.remoteKeys])
+        let plainLG = TVRemoteCore.TVDevice(id: TVIdentity(platform: .lg, identifier: host),
+                                          name: "LG TV", endpoint: TVEndpoint(host: host, port: 3000),
+                                          capabilities: [.remoteKeys])
+        await driver.serveProbe(for: plainLG)
+
+        do {
+            _ = try await session.find(host)
+            XCTFail("A bare-IP lookup must not select a plain LG TV without a reported UUID.")
+        } catch LiveTVSession.Failure.notFound {}
+        let probes = await driver.probedPorts
+        XCTAssertEqual(probes, [3001, 3000])
+        XCTAssertNil(session.device("lg:\(host)"))
+    }
+
     func testSearchRequiresAdvertisedCapability() async throws {
         for platform in [TVPlatform.googleTV, .samsung, .lg] {
             let (connection, session, device, _) = try await liveFixture(platform: platform, [.remoteKeys])

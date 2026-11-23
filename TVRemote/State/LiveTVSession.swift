@@ -83,7 +83,13 @@ final class LiveTVSession {
                 }
             }
             for await candidate in group {
-                if let candidate { group.cancelAll(); return candidate }
+                guard let candidate else { continue }
+                if candidate.id.platform == .lg && candidate.endpoint.port == 3000 {
+                    let identifier = candidate.id.identifier
+                    guard !identifier.isEmpty, identifier != candidate.endpoint.host.lowercased() else { continue }
+                }
+                group.cancelAll()
+                return candidate
             }
             return nil
         }
