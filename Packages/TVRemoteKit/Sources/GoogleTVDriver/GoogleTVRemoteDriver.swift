@@ -108,11 +108,12 @@ public actor GoogleTVRemoteDriver: TVDriver {
                 let wire = GoogleTVWire(stream: connection.stream)
                 let remote = GoogleTVRemoteSession(wire: wire)
                 try await remote.start()
+                var capabilities: TVCapabilities = [.remoteKeys, .launch, .controlWake, .inputMenu]
+                if await remote.supportsText { capabilities.insert(.keyboard) }
                 try Task.checkCancellation()
                 guard generation == token else { throw CancellationError() }
                 session = remote
-                device = TVDevice(id: tv.id, name: tv.name, endpoint: endpoint,
-                                  capabilities: [.remoteKeys, .launch, .controlWake, .inputMenu])
+                device = TVDevice(id: tv.id, name: tv.name, endpoint: endpoint, capabilities: capabilities)
                 states.publish(.ready)
                 listener = Task { [states] in await remote.listen(states: states) }
             } catch {
@@ -129,7 +130,8 @@ public actor GoogleTVRemoteDriver: TVDriver {
 
     public func send(_ key: RemoteKey) async throws {
         guard let session else { throw TVError.notConnected }
-        try await session.sendKey(Self.keyCode(key))
+        if case .text(let text) = key { try await session.sendText(text) }
+        else { try await session.sendKey(Self.keyCode(key)) }
     }
 
     public func connectedDevice() async -> TVDevice? { device }

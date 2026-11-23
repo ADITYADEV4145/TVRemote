@@ -49,7 +49,7 @@ private actor Transcript: HTTPTransport {
     let tv = try await driver.probe(endpoint)
     #expect(tv.id == TVIdentity(platform: .roku, identifier: "roku:abcd"))
     #expect(tv.name == "Family & Friends")
-    #expect(tv.capabilities == [.remoteKeys, .launch, .search, .keyboard, .networkWake])
+    #expect(tv.capabilities == [.remoteKeys, .launch, .search, .keyboard, .networkWake, .inputSelection, .appList])
     let credential = try await driver.pair(tv) { _ in
         Issue.record("Roku must not prompt for pairing.")
         return .acknowledged

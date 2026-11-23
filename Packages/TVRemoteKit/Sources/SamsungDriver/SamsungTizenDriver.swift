@@ -88,6 +88,19 @@ public actor SamsungTizenDriver: TVDriver {
     public func connectedDevice() -> TVDevice? { device }
 
     public func send(_ key: RemoteKey) async throws {
+        if case .text(let text) = key {
+            guard let connection, let device else { throw TVError.notConnected }
+            guard device.capabilities.contains(.keyboard) else { throw TVError.notSupported }
+            guard !text.isEmpty else { throw TVError.invalidCommand }
+            try await connection.sendJSON([
+                "method": .string("ms.remote.control"),
+                "params": .object([
+                    "Cmd": .string(Data(text.utf8).base64EncodedString()),
+                    "DataOfCmd": .string("base64"), "TypeOfRemote": .string("SendInputString")
+                ])
+            ])
+            return
+        }
         let code: String
         switch key {
         case .up: code = "KEY_UP"
@@ -191,6 +204,7 @@ public actor SamsungTizenDriver: TVDriver {
                 }
                 let address = (info["wifiMac"].string ?? info["mac"].string).flatMap(MACAddress.init(rawValue:))
                 var capabilities: TVCapabilities = [.remoteKeys, .inputMenu, .launch, .appList]
+                if info["ImeSyncedSupport"].bool == true { capabilities.insert(.keyboard) }
                 if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
                 return TVDevice(id: TVIdentity(platform: .samsung, identifier: id),
                                 name: info["name"].string ?? json["name"].string ?? "Samsung TV",

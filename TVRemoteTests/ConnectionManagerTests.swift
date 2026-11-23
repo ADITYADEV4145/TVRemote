@@ -264,6 +264,27 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(keys, [.channelUp, .volumeUp])
     }
 
+    func testKeyboardDraftIsScopedToTheSelectedTV() async throws {
+        let (connection, session, device, _) = try await liveFixture([.remoteKeys, .keyboard])
+        let other = TVRemoteCore.TVDevice(
+            id: TVIdentity(platform: .lg, identifier: "second"),
+            name: "Second TV", endpoint: device.endpoint, capabilities: .remoteKeys
+        )
+        for tv in [device, other] { try await session.credentials.save(.token("paired"), for: tv.id) }
+        let first = session.remember(device)
+        let second = session.remember(other)
+        _ = await connection.select(first)
+        XCTAssertTrue(connection.supportsTyping)
+        XCTAssertFalse(connection.supportsSearch)
+        connection.keyboardDraft = "First TV’s draft"
+        _ = await connection.select(second)
+        XCTAssertFalse(connection.supportsTyping)
+        XCTAssertFalse(connection.supportsSearch)
+        XCTAssertEqual(connection.keyboardDraft, "")
+        _ = await connection.select(first)
+        XCTAssertEqual(connection.keyboardDraft, "First TV’s draft")
+    }
+
     func testRapidRemoteCommandsAreDeliveredInOrder() async throws {
         let (connection, session, device, driver) = try await liveFixture([.remoteKeys])
         try await session.credentials.save(.token("paired"), for: device.id)

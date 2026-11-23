@@ -3,46 +3,67 @@ import TVRemoteKit
 
 struct KeyboardScreen: View {
     @Environment(RemoteViewModel.self) private var connection
-    @SceneStorage("keyboardDraft") private var savedQuery = ""
     @Environment(\.isDesignPreview) private var isDesignPreview
     @State private var previewQuery = ""
     @FocusState private var focused: Bool
     @State private var sending = false
     var sentPreview = false
 
-    private var query: Binding<String> { isDesignPreview ? $previewQuery : $savedQuery }
+    private var query: Binding<String> {
+        isDesignPreview ? $previewQuery : Binding { connection.keyboardDraft } set: { connection.keyboardDraft = $0 }
+    }
+    private var isSearch: Bool { isDesignPreview || connection.supportsSearch }
+    private var isTyping: Bool { connection.supportsTyping }
+    private var canSend: Bool { connection.canControl && (isTyping || isSearch) }
+    private var sendLabel: String { isTyping ? "Send text" : "Send search" }
 
     var body: some View {
         ScreenBody {
-            ScreenHeading("", sentPreview || connection.feedback == "Search sent to TV" ? "Search sent" : "Keyboard",
+            ScreenHeading("", sentTitle,
                           connection.currentDevice?.name ?? "No TV selected")
             Panel {
-                Text("Search on your TV").font(.headline)
-                Text("This driver supports search, not typing into arbitrary TV fields or passwords.")
+                Text(isSearch ? "Search on your TV" : isTyping ? "Type on your TV" : "Keyboard unavailable").font(.headline)
+                Text(keyboardDetail)
                     .font(.subheadline).foregroundStyle(RemoteTheme.muted)
-                TextField("Type a search", text: query, axis: .vertical)
+                TextField(isTyping ? "Type text" : "Type a search", text: query, axis: .vertical)
                     .lineLimit(3...6).textInputAutocapitalization(.sentences)
                     .padding(16).background(RemoteTheme.canvas, in: RoundedRectangle(cornerRadius: 16))
-                    .submitLabel(.search).focused($focused).disabled(!connection.canSearch || sending)
+                    .submitLabel(isTyping ? .send : .search).focused($focused).disabled(!canSend || sending)
                     .onSubmit(send).accessibilityIdentifier("searchDraft")
             }
-            Button(sending ? "Sending…" : "Send search", systemImage: "arrow.up.right", action: send)
+            Button(sending ? "Sending…" : sendLabel, systemImage: "arrow.up.right", action: send)
                 .buttonStyle(PrimaryActionStyle())
-                .disabled(!connection.canSearch || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSend || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Clear draft") { query.wrappedValue = ""; connection.clearMessages() }
                 .buttonStyle(SecondaryActionStyle()).disabled(sending || query.wrappedValue.isEmpty)
             ConnectionMessage()
-            SupportingCopy(title: "Only when you send", detail: "Your draft stays on this iPhone until you tap Send search. A sent search is not proof of a visible change on the TV.")
+            SupportingCopy(title: "Only when you send", detail: "Your draft stays on this iPhone until you send it. Sending does not confirm a visible change on the TV.")
         }
         .modifier(CloseTool())
     }
 
+    private var sentTitle: String {
+        if sentPreview || connection.feedback == "Search sent to TV" { return "Search sent" }
+        if connection.feedback == "Text sent to TV" { return "Text sent" }
+        return "Keyboard"
+    }
+
+    private var keyboardDetail: String {
+        if isSearch { return "This connection supports search, not typing into arbitrary TV fields or passwords." }
+        if isTyping { return "Open a supported text field on your TV first. This does not start a TV search." }
+        return "This connection does not support search or text entry. Use your TV’s keyboard instead."
+    }
+
     private func send() {
-        guard connection.canSearch, !sending else { return }
+        guard canSend, !sending else { return }
         focused = false
         sending = true
         let text = query.wrappedValue
-        Task { await connection.search(text); sending = false }
+        Task {
+            if isTyping { await connection.typeOnTV(text) }
+            else { await connection.search(text) }
+            sending = false
+        }
     }
 }
 

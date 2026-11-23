@@ -33,6 +33,7 @@ final class RemoteViewModel {
     #endif
     private var demoCredentials: [TVDevice.ID: String] = [:]
     private var unavailableChannelTVs: Set<TVDevice.ID> = []
+    private var keyboardDrafts: [TVDevice.ID: String] = [:]
     private var messageGeneration = 0
     @ObservationIgnored private var stateTask: Task<Void, Never>?
     @ObservationIgnored private var pairingTask: Task<Bool, Never>?
@@ -82,9 +83,13 @@ final class RemoteViewModel {
         return live?.device(id)?.capabilities ?? []
     }
     var canSearch: Bool {
-        guard canControl, let device = currentDevice else { return false }
-        if let live { return live.device(device.id)?.capabilities.contains(.search) == true }
-        return driver != nil
+        canControl && supportsSearch
+    }
+    var supportsSearch: Bool { driver != nil || capabilities.contains(.search) }
+    var supportsTyping: Bool { capabilities.contains(.keyboard) && !supportsSearch }
+    var keyboardDraft: String {
+        get { currentDevice.flatMap { keyboardDrafts[$0.id] } ?? "" }
+        set { if let id = currentDevice?.id { keyboardDrafts[id] = newValue } }
     }
     var canPower: Bool { canControl || (!isConnecting && canWake) }
     private var canWake: Bool {
@@ -236,6 +241,7 @@ final class RemoteViewModel {
     }
 
     func forget(_ device: TVDevice) async {
+        keyboardDrafts.removeValue(forKey: device.id)
         guard !isConnecting else { return }
         if let live {
             do { try await live.forget(device.id) }
@@ -322,6 +328,13 @@ final class RemoteViewModel {
         await perform("TV search", feedback: "Search sent to TV") { [self] in
             if let live { try await live.manager.search(query) }
             else { try await driver?.search(query) }
+        }
+    }
+
+    func typeOnTV(_ text: String) async {
+        guard canControl, supportsTyping, !text.isEmpty, let live else { return }
+        await perform("Type on TV", feedback: "Text sent to TV") {
+            try await live.manager.send(.text(text))
         }
     }
 

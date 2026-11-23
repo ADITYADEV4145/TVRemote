@@ -23,8 +23,8 @@ private let pairingReplies = hex("""
     """)
 private let remoteReady = hex("05 0a0308e704 04 12020800 05 c202020801")
 private let initialRemoteWrites = [
-    hex("1e 0a1c08e304121718012201312a0961747672656d6f74653205312e302e30"),
-    hex("05 120308e304")
+    hex("1e 0a1c08e704121718012201312a0961747672656d6f74653205312e302e30"),
+    hex("05 120308e704")
 ]
 
 private func hex(_ text: String) -> Data {
@@ -318,6 +318,15 @@ private func makeDriver(
     await listener.value
     await #expect(throws: TVError.timedOut) { try await session.checkConnection() }
     #expect(await remote.closed)
+}
+
+@Test func googleTVSendsTextWithTheNegotiatedIMEFieldCounters() async throws {
+    let context = hex("0b a20108 0a020807 12020809")
+    let remote = TranscriptTLSStream(remoteReady.dropLast(6) + context + remoteReady.suffix(6))
+    let session = GoogleTVRemoteSession(wire: GoogleTVWire(stream: remote))
+    try await session.start()
+    try await session.sendText("Hi")
+    #expect(await remote.writes == initialRemoteWrites + [hex("15 aa0112 08071009 1a0c08011208080210021a024869")])
 }
 
 @Test func googleTVRejectsOversizedFramesBeforePrompting() async throws {
