@@ -98,6 +98,7 @@ public actor SamsungTizenDriver: TVDriver {
         case .back: code = "KEY_RETURN"
         case .home: code = "KEY_HOME"
         case .options: code = "KEY_MENU"
+        case .inputMenu: code = "KEY_SOURCE"
         case .volumeUp: code = "KEY_VOLUP"
         case .volumeDown: code = "KEY_VOLDOWN"
         case .mute: code = "KEY_MUTE"
@@ -159,7 +160,7 @@ public actor SamsungTizenDriver: TVDriver {
                     throw TVError.invalidResponse
                 }
                 let address = (info["wifiMac"].string ?? info["mac"].string).flatMap(MACAddress.init(rawValue:))
-                var capabilities: TVCapabilities = .remoteKeys
+                var capabilities: TVCapabilities = [.remoteKeys, .inputMenu]
                 if address != nil && wakeService != nil { capabilities.insert(.networkWake) }
                 return TVDevice(id: TVIdentity(platform: .samsung, identifier: id),
                                 name: info["name"].string ?? json["name"].string ?? "Samsung TV",

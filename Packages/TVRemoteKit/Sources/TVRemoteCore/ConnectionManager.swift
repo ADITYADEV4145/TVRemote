@@ -126,6 +126,25 @@ public actor ConnectionManager {
         try await perform { try await $0.keepAlive() }
     }
 
+    public func inputs() async throws -> [TVInput] {
+        try await read { try await $0.inputs() }
+    }
+
+    public func selectInput(_ input: TVInput) async throws {
+        try await perform { try await $0.selectInput(input) }
+    }
+
+    private func read<T: Sendable>(_ operation: @Sendable (any TVDriver) async throws -> T) async throws -> T {
+        guard phase == .ready, let driver else { throw TVError.notConnected }
+        guard !commandInFlight else { throw TVError.busy }
+        let token = generation
+        commandInFlight = true
+        defer { if generation == token { commandInFlight = false } }
+        let value = try await operation(driver)
+        try ensureCurrent(token)
+        return value
+    }
+
     public func wake() async throws {
         guard let tv = currentDevice else { throw TVError.notConnected }
         guard tv.capabilities.contains(.networkWake) else { throw TVError.notSupported }

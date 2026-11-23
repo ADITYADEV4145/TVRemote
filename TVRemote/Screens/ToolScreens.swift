@@ -1,4 +1,5 @@
 import SwiftUI
+import TVRemoteKit
 
 struct KeyboardScreen: View {
     @Environment(RemoteViewModel.self) private var connection
@@ -273,9 +274,46 @@ struct VoiceScreen: View {
 }
 
 struct InputsScreen: View {
+    @Environment(RemoteViewModel.self) private var connection
+    @State private var inputs: [TVInput]?
+    @State private var failure: String?
+
     var body: some View {
-        UnavailableScreen(title: "Inputs", icon: "rectangle.on.rectangle",
-                          reason: "This driver does not supply inputs or an input-menu command. Use your TV’s physical remote to change inputs.")
+        if connection.supportsInputMenu || connection.supportsInputSelection {
+            ScreenBody {
+                ScreenHeading("", "Inputs", connection.currentDevice?.name ?? "No TV selected")
+                if connection.supportsInputMenu {
+                    Button("Open TV input menu") { Task { await connection.openTVInputMenu() } }
+                        .buttonStyle(PrimaryActionStyle()).disabled(!connection.canControl)
+                } else if let inputs, !inputs.isEmpty {
+                    ForEach(inputs) { input in
+                        Panel {
+                            Button {
+                                Task { await connection.selectInput(input) }
+                            } label: {
+                                DetailRow(icon: "rectangle.on.rectangle", title: input.name,
+                                          detail: "Switch input", trailing: "chevron.right")
+                            }.buttonStyle(.plain).disabled(!connection.canControl)
+                        }
+                    }
+                } else {
+                    HeroCard(icon: "rectangle.on.rectangle", title: "Inputs",
+                             detail: failure ?? (inputs == nil ? "Looking up inputs…" : "The TV did not list any inputs."))
+                }
+                ConnectionMessage()
+            }
+            .modifier(TaskSurface())
+            .task(id: connection.canControl) {
+                guard connection.canControl, connection.supportsInputSelection else { return }
+                do { inputs = try await connection.loadInputs(); failure = nil }
+                catch is CancellationError {}
+                catch TVError.notSupported { failure = "This TV did not provide an input list." }
+                catch { failure = "Could not read inputs from the TV." }
+            }
+        } else {
+            UnavailableScreen(title: "Inputs", icon: "rectangle.on.rectangle",
+                              reason: "This connection does not offer input controls. Use your TV’s physical remote to change inputs.")
+        }
     }
 }
 

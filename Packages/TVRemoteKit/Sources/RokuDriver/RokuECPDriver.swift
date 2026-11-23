@@ -87,6 +87,20 @@ public actor RokuECPDriver: TVDriver {
         try await command(path: "/search/browse", query: [URLQueryItem(name: "keyword", value: query)])
     }
 
+    public func inputs() async throws -> [TVInput] {
+        let endpoint = try await verifiedEndpoint()
+        let body = try await request(.get, endpoint: endpoint, path: "/query/apps")
+        return try ECPAppList.parse(body).compactMap { entry in
+            guard entry.type == "tvin", entry.id.hasPrefix("tvinput.") else { return nil }
+            return TVInput(id: entry.id, name: entry.name)
+        }
+    }
+
+    public func selectInput(_ input: TVInput) async throws {
+        guard input.id.hasPrefix("tvinput.") else { throw TVError.invalidCommand }
+        try await launch(AppID(rawValue: input.id))
+    }
+
     public func wake(_ tv: TVDevice) async throws {
         guard tv.id.platform == .roku else { throw TVError.identityMismatch }
         guard try await probe(tv.endpoint).id == tv.id else { throw TVError.identityMismatch }
@@ -169,7 +183,7 @@ public actor RokuECPDriver: TVDriver {
         case .digit(let digit):
             if digit < 10 { ["Lit_\(digit)"] } else { throw TVError.invalidCommand }
         case .text(let text): text.unicodeScalars.map { "Lit_" + String($0) }
-        case .play, .pause, .stop: throw TVError.notSupported
+        case .play, .pause, .stop, .inputMenu: throw TVError.notSupported
         }
     }
 }
@@ -191,7 +205,7 @@ private final class DeviceInfo: NSObject, XMLParserDelegate {
         let name = info.first("friendly-device-name", "user-device-name", "default-device-name", "model-name") ?? "Roku"
         var capabilities: TVCapabilities = [.remoteKeys, .launch, .keyboard]
         if info.fields["search-enabled"] != "false" { capabilities.insert(.search) }
-        if info.fields["is-tv"] == "true" { capabilities.insert(.networkWake) }
+        if info.fields["is-tv"] == "true" { capabilities.formUnion([.networkWake, .inputSelection]) }
         let device = TVDevice(
             id: TVIdentity(platform: .roku, identifier: identifier.lowercased()),
             name: name, endpoint: endpoint, capabilities: capabilities
@@ -220,5 +234,50 @@ private final class DeviceInfo: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName: String?) {
         if stack.count == 2 { fields[elementName] = value.trimmingCharacters(in: .whitespacesAndNewlines) }
         _ = stack.popLast()
+    }
+}
+
+private final class ECPAppList: NSObject, XMLParserDelegate {
+    struct Entry {
+        let id: String
+        let name: String
+        let type: String?
+    }
+
+    private var elements: [String] = []
+    private var root: String?
+    private var attributes: [String: String] = [:]
+    private var name = ""
+    private var entries: [Entry] = []
+
+    static func parse(_ body: Data) throws -> [Entry] {
+        let list = ECPAppList()
+        let parser = XMLParser(data: body)
+        parser.delegate = list
+        guard parser.parse(), list.root == "apps" else { throw TVError.invalidResponse }
+        return list.entries
+    }
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName: String?, attributes attributeDict: [String: String]) {
+        if elements.isEmpty { root = elementName }
+        elements.append(elementName)
+        if elements == ["apps", "app"] {
+            attributes = attributeDict
+            name = ""
+        }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if elements == ["apps", "app"] { name += string }
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName: String?) {
+        if elements == ["apps", "app"], let id = attributes["id"], !id.isEmpty {
+            let title = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { entries.append(Entry(id: id, name: title, type: attributes["type"])) }
+        }
+        _ = elements.popLast()
     }
 }

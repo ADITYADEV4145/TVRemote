@@ -38,6 +38,8 @@ public struct TVCapabilities: OptionSet, Sendable, Hashable, Codable {
     public static let networkWake = Self(rawValue: 1 << 4)
     public static let pointer = Self(rawValue: 1 << 5)
     public static let controlWake = Self(rawValue: 1 << 6)
+    public static let inputMenu = Self(rawValue: 1 << 7)
+    public static let inputSelection = Self(rawValue: 1 << 8)
 }
 
 public struct TVDevice: Sendable, Hashable, Codable, Identifiable {
@@ -88,6 +90,17 @@ public enum RemoteKey: Sendable, Hashable, Codable {
     case digit(UInt8)
     case text(String)
     case delete
+    case inputMenu
+}
+
+public struct TVInput: Identifiable, Sendable, Equatable {
+    public let id: String
+    public let name: String
+
+    public init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
 }
 
 public struct AppID: RawRepresentable, Sendable, Hashable, Codable {
@@ -121,6 +134,8 @@ public protocol TVDriver: Sendable {
     func search(_ query: String) async throws
     func wake(_ tv: TVDevice) async throws
     func keepAlive() async throws
+    func inputs() async throws -> [TVInput]
+    func selectInput(_ input: TVInput) async throws
     var state: AsyncStream<ConnectionState> { get }
 }
 
@@ -132,4 +147,6 @@ extension TVDriver {
     }
 
     public func keepAlive() async throws {}
+    public func inputs() async throws -> [TVInput] { throw TVError.notSupported }
+    public func selectInput(_ input: TVInput) async throws { throw TVError.notSupported }
 }

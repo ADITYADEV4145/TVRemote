@@ -122,6 +122,20 @@ private actor Transcript: HTTPTransport {
     #expect(await transport.requests.count == 4)
 }
 
+@Test func rokuListsOnlyTVInputsAndLaunchesTheReportedInput() async throws {
+    let xml = #"<apps><app id="12" type="appl">Netflix</app><app id="tvinput.hdmi1" type="tvin">HDMI 1</app></apps>"#
+    let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(),
+                                HTTPResponse(status: 200, body: Data(xml.utf8)),
+                                deviceInfo(), HTTPResponse(status: 200)])
+    let driver = RokuECPDriver(http: transport)
+    let tv = try await driver.probe(endpoint)
+    try await driver.connect(tv, .none)
+    let inputs = try await driver.inputs()
+    #expect(inputs == [TVInput(id: "tvinput.hdmi1", name: "HDMI 1")])
+    try await driver.selectInput(try #require(inputs.first))
+    #expect(await transport.requests.last?.url.path == "/launch/tvinput.hdmi1")
+}
+
 @Test func rokuDoesNotSendACommandToAReplacementAtTheSavedAddress() async throws {
     let transport = Transcript([deviceInfo(), deviceInfo(), deviceInfo(id: "roku:other")])
     let driver = RokuECPDriver(http: transport)

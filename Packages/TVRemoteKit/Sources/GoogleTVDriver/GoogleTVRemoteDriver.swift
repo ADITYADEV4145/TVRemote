@@ -11,6 +11,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
     private let clientName: String
     private nonisolated let states = StateFeed()
     private var session: GoogleTVRemoteSession?
+    private var device: TVDevice?
     private var listener: Task<Void, Never>?
     private var generation = UUID()
 
@@ -57,7 +58,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
             id: identity(for: connection.peer),
             name: connection.deviceName ?? "Google TV",
             endpoint: TVEndpoint(host: endpoint.host, port: Self.controlPort),
-            capabilities: [.remoteKeys, .launch, .controlWake]
+            capabilities: [.remoteKeys, .launch, .controlWake, .inputMenu]
         )
     }
 
@@ -96,6 +97,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
         listener?.cancel()
         listener = nil
         session = nil
+        device = nil
         states.publish(.connecting)
 
         do {
@@ -109,6 +111,8 @@ public actor GoogleTVRemoteDriver: TVDriver {
                 try Task.checkCancellation()
                 guard generation == token else { throw CancellationError() }
                 session = remote
+                device = TVDevice(id: tv.id, name: tv.name, endpoint: endpoint,
+                                  capabilities: [.remoteKeys, .launch, .controlWake, .inputMenu])
                 states.publish(.ready)
                 listener = Task { [states] in await remote.listen(states: states) }
             } catch {
@@ -127,6 +131,8 @@ public actor GoogleTVRemoteDriver: TVDriver {
         guard let session else { throw TVError.notConnected }
         try await session.sendKey(Self.keyCode(key))
     }
+
+    public func connectedDevice() async -> TVDevice? { device }
 
     public func launch(_ app: AppID) async throws {
         guard let session else { throw TVError.notConnected }
@@ -164,6 +170,7 @@ public actor GoogleTVRemoteDriver: TVDriver {
         case .back: 4
         case .home: 3
         case .options: 82
+        case .inputMenu: 178
         case .volumeUp: 24
         case .volumeDown: 25
         case .mute: 164

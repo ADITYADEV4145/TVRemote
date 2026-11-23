@@ -70,6 +70,13 @@ final class RemoteViewModel {
     var canChangeChannel: Bool {
         canControl && currentDevice.map { !unavailableChannelTVs.contains($0.id) } == true
     }
+    var supportsInputMenu: Bool { capabilities.contains(.inputMenu) }
+    var supportsInputSelection: Bool { capabilities.contains(.inputSelection) }
+
+    private var capabilities: TVCapabilities {
+        guard let id = currentDevice?.id else { return [] }
+        return live?.device(id)?.capabilities ?? []
+    }
     var canSearch: Bool {
         guard canControl, let device = currentDevice else { return false }
         if let live { return live.device(device.id)?.capabilities.contains(.search) == true }
@@ -281,6 +288,22 @@ final class RemoteViewModel {
             if let live { try await live.manager.launch(app) }
             else { try await driver?.launch(app) }
         }
+    }
+
+    func loadInputs() async throws -> [TVInput] {
+        guard canControl, supportsInputSelection, let live else { throw TVError.notSupported }
+        await healthCheck?.value
+        return try await live.manager.inputs()
+    }
+
+    func selectInput(_ input: TVInput) async {
+        guard canControl, supportsInputSelection, let live else { return }
+        await perform("Switch to \(input.name)") { try await live.manager.selectInput(input) }
+    }
+
+    func openTVInputMenu() async {
+        guard canControl, supportsInputMenu, let live else { return }
+        await perform("Open TV input menu") { try await live.manager.send(.inputMenu) }
     }
 
     func search(_ query: String) async {
