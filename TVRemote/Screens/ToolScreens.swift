@@ -22,12 +22,12 @@ struct KeyboardScreen: View {
                 TextField("Type a search", text: query, axis: .vertical)
                     .lineLimit(3...6).textInputAutocapitalization(.sentences)
                     .padding(16).background(RemoteTheme.canvas, in: RoundedRectangle(cornerRadius: 16))
-                    .submitLabel(.search).focused($focused).disabled(!connection.canControl || sending)
+                    .submitLabel(.search).focused($focused).disabled(!connection.canSearch || sending)
                     .onSubmit(send).accessibilityIdentifier("searchDraft")
             }
             Button(sending ? "Sending…" : "Send search", systemImage: "arrow.up.right", action: send)
                 .buttonStyle(PrimaryActionStyle())
-                .disabled(!connection.canControl || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!connection.canSearch || sending || query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Clear draft") { query.wrappedValue = ""; connection.clearMessages() }
                 .buttonStyle(SecondaryActionStyle()).disabled(sending || query.wrappedValue.isEmpty)
             ConnectionMessage()
@@ -37,7 +37,7 @@ struct KeyboardScreen: View {
     }
 
     private func send() {
-        guard !sending else { return }
+        guard connection.canSearch, !sending else { return }
         focused = false
         sending = true
         let text = query.wrappedValue

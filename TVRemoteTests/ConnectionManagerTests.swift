@@ -189,6 +189,20 @@ final class ConnectionManagerTests: XCTestCase {
         XCTAssertEqual(connection.pairingCompletion, 1)
     }
 
+    func testSearchRequiresAdvertisedCapability() async throws {
+        for platform in [TVPlatform.googleTV, .samsung, .lg] {
+            let (connection, session, device, _) = try await liveFixture(platform: platform, [.remoteKeys])
+            try await session.credentials.save(.token("paired"), for: device.id)
+            let connected = await connection.select(session.remember(device))
+            XCTAssertTrue(connected)
+            XCTAssertTrue(connection.canControl)
+            XCTAssertFalse(connection.canSearch)
+            await connection.search("Movie night")
+            XCTAssertNil(connection.error)
+            XCTAssertTrue(connection.recentCommands.isEmpty)
+        }
+    }
+
     private func liveFixture(platform: TVPlatform = .lg, _ capabilities: TVCapabilities) async throws
         -> (RemoteViewModel, LiveTVSession, LiveTVSession.Device, LiveFixtureDriver) {
         let device = LiveTVSession.Device(id: TVIdentity(platform: platform, identifier: "tv"),

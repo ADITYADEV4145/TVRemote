@@ -66,6 +66,11 @@ final class RemoteViewModel {
     deinit { stateTask?.cancel() }
 
     var canControl: Bool { state == .ready && currentDevice != nil && !isConnecting }
+    var canSearch: Bool {
+        guard canControl, let device = currentDevice else { return false }
+        if let live { return live.device(device.id)?.capabilities.contains(.search) == true }
+        return driver != nil
+    }
     var canPower: Bool { canControl || (!isConnecting && canWake) }
     private var canWake: Bool {
         guard let device = currentDevice else { return false }
@@ -259,7 +264,7 @@ final class RemoteViewModel {
 
     func search(_ query: String) async {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard canControl, !query.isEmpty else { return }
+        guard canSearch, !query.isEmpty else { return }
         await perform("TV search", feedback: "Search sent to TV") { [self] in
             if let live { try await live.manager.search(query) }
             else { try await driver?.search(query) }
