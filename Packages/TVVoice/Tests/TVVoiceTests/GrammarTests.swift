@@ -104,6 +104,9 @@ final class SearchTests: XCTestCase {
         XCTAssertEqual(s("find episodes of The Office"), "search:the office")
         XCTAssertEqual(s("find movie Dune"), "search:dune")
         XCTAssertEqual(s("search for 9-1-1"), "search:9-1-1")
+        XCTAssertEqual(s("search for Show Dogs"), "search:show dogs")
+        XCTAssertEqual(s("find movie A Good Person"), "search:a good person")
+        XCTAssertEqual(s("find show called Severance"), "search:severance")
         XCTAssertEqual(g("click okay"), "key:select")
         XCTAssertEqual(g("tap okay"), "key:select")
     }
