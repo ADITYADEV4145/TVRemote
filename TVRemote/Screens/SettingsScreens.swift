@@ -192,8 +192,8 @@ struct CompatibilityScreen: View {
         ScreenBody {
             ScreenHeading("", "Will my TV work?", "A smart TV with network control is required.")
             Panel {
-                DetailRow(icon: "testtube.2", title: "Available in this build", detail: "Simulated Roku TV and Google TV only")
-                DetailRow(icon: "tv", title: "Planned first-release platforms", detail: "Roku, Google TV, Samsung Tizen and LG webOS")
+                DetailRow(icon: "testtube.2", title: "Tested with simulators only", detail: "Pairing and remote controls were tested on all four platforms")
+                DetailRow(icon: "tv", title: "Drivers in this build", detail: "Roku TV, Google TV, Samsung Tizen and LG webOS")
                 DetailRow(icon: "network.slash", title: "Hardware not validated", detail: "No physical TV was connected or tested")
             }
             SupportingCopy(title: "Not every TV is supported", detail: "An iPhone has no infrared blaster. Network control, model and firmware determine which features work.")
