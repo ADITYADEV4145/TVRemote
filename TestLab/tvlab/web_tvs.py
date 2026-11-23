@@ -8,6 +8,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from aiohttp import WSMsgType, web
 
 SAMSUNG_PATH = "/api/v2/channels/samsung.remote.control"
+SAMSUNG_SUPPORT = {"ImeSyncedSupport": "true", "TokenAuthSupport": "true"}
 SAMSUNG_KEYS = set("""KEY_POWER KEY_HOME KEY_RETURN KEY_EXIT KEY_MENU KEY_SOURCE KEY_INFO
 KEY_UP KEY_DOWN KEY_LEFT KEY_RIGHT KEY_ENTER KEY_VOLUP KEY_VOLDOWN KEY_MUTE KEY_CHUP KEY_CHDOWN
 KEY_PLAY KEY_PAUSE KEY_STOP KEY_REWIND KEY_FF KEY_PLAYPAUSE KEY_GUIDE KEY_CH_LIST
@@ -59,8 +60,9 @@ def samsung_routes(app, tv):
             "id": f"uuid:lab-samsung-{tv.mac.replace(':', '')}",
             "name": "Lab Samsung", "type": "Samsung SmartTV",
             "version": "2.0.25", "uri": f"{request.scheme}://{request.host}/api/v2/",
+            "isSupport": json.dumps(SAMSUNG_SUPPORT, separators=(",", ":")),
             "device": {"name": "Lab Samsung", "modelName": "Tizen Simulator", "wifiMac": tv.mac,
-                       "OS": "Tizen", "PowerState": "on", "TokenAuthSupport": "true"},
+                       "OS": "Tizen", "PowerState": "on", **SAMSUNG_SUPPORT},
         })
 
     async def device(request):

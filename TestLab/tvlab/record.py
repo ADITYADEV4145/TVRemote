@@ -41,6 +41,12 @@ async def record_roku(lab, session, trace):
 
 
 async def record_samsung(lab, session, trace):
+    endpoint = url(lab.address("samsung", "https"), "https")
+    async with session.get(endpoint + "/api/v2/", ssl=False) as response:
+        info = await response.json()
+        info["uri"] = "https://<host>/api/v2/"
+        trace.append({"request": {"method": "GET", "path": "/api/v2/"},
+                      "response": {"status": response.status, "body": info}})
     base = url(lab.address("samsung", "https"), "wss")
     params = {"name": base64.b64encode(b"Fixture client").decode()}
     trace.append({"connect": SAMSUNG_PATH, "query": params})

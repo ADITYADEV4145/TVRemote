@@ -3,6 +3,32 @@
   "source": "TestLab simulator, not hardware",
   "frames": [
     {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/"
+      },
+      "response": {
+        "status": 200,
+        "body": {
+          "id": "uuid:lab-samsung-020000000003",
+          "name": "Lab Samsung",
+          "type": "Samsung SmartTV",
+          "version": "2.0.25",
+          "uri": "https://<host>/api/v2/",
+          "isSupport": "{\"ImeSyncedSupport\":\"true\",\"TokenAuthSupport\":\"true\"}",
+          "device": {
+            "name": "Lab Samsung",
+            "modelName": "Tizen Simulator",
+            "wifiMac": "02:00:00:00:00:03",
+            "OS": "Tizen",
+            "PowerState": "on",
+            "ImeSyncedSupport": "true",
+            "TokenAuthSupport": "true"
+          }
+        }
+      }
+    },
+    {
       "connect": "/api/v2/channels/samsung.remote.control",
       "query": {
         "name": "Rml4dHVyZSBjbGllbnQ="

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import json
 import socket
 import ssl
 import xml.etree.ElementTree as ET
@@ -221,11 +222,20 @@ async def test_samsung_tokens_keys_app_and_wake(lab):
     tv = lab.tvs["samsung"]
     params = {"name": base64.b64encode(b"Swift reference").decode()}
     http = url(lab.address("samsung", "http"))
+    https = url(lab.address("samsung", "https"), "https")
     wss = url(lab.address("samsung", "https"), "wss") + SAMSUNG_PATH
 
     async with ClientSession() as client:
-        async with client.get(http + "/api/v2/") as response:
-            assert (await response.json())["device"]["TokenAuthSupport"] == "true"
+        for endpoint in (http, https):
+            async with client.get(endpoint + "/api/v2/", ssl=False) as response:
+                assert response.status == 200
+                info = await response.json()
+                assert info["device"]["TokenAuthSupport"] == "true"
+                assert info["device"]["ImeSyncedSupport"] == "true"
+                assert "isSupport" not in info["device"]
+                support = json.loads(info["isSupport"])
+                assert support["ImeSyncedSupport"] == info["device"]["ImeSyncedSupport"]
+                assert support["TokenAuthSupport"] == info["device"]["TokenAuthSupport"]
 
         await lab.apply("samsung", {"action": "approval", "allow": False})
         async with client.ws_connect(wss, params=params, ssl=False) as ws:
