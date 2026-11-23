@@ -11,6 +11,7 @@ struct SetupScreen: View {
     @State private var address = ""
     @State private var code = ""
     @State private var movedDeviceID: String?
+    @AccessibilityFocusState private var headingFocused: Bool
     private let initiallyStarted: Bool
     let connected: () -> Void
 
@@ -27,23 +28,21 @@ struct SetupScreen: View {
             switch page {
             case .welcome:
                 ScreenHeading("", "Your phone. Your remote.", "No accounts. No ads. Just your TV.")
+                    .accessibilityFocused($headingFocused)
                 HeroCard(icon: "square.grid.2x2", title: "Right where you left it.",
                          detail: "Find your TV on Wi-Fi and get back to watching. The basic remote is always free.")
                 SupportingCopy(title: connection.isDemo ? "Try the remote" : "Made for smart TVs",
                                detail: connection.isDemo
                                ? "This build uses simulated TVs. It does not access your network or control a physical TV."
                                : "Your iPhone and TV need the same Wi-Fi. Network control is required.")
-                Button("Find my TV") { page = .network }.buttonStyle(PrimaryActionStyle())
-                NavigationLink("Check compatibility") { CompatibilityScreen() }.buttonStyle(SecondaryActionStyle())
             case .network:
                 ScreenHeading("", "Let’s find your TV", "Your TV and iPhone need the same Wi-Fi.")
+                    .accessibilityFocused($headingFocused)
                 HeroCard(icon: "wifi", title: "A local connection.",
                          detail: connection.isDemo
                          ? "No Local Network permission is requested in demo mode. We’ll find two simulated TVs."
                          : "Allow Local Network access when discovery asks so this phone can find and control your TV.")
                 SupportingCopy(title: "You’re in control", detail: "We ask for access only when it’s needed. You can change it in iPhone Settings.")
-                Button("Find TVs") { page = .discovery }.buttonStyle(PrimaryActionStyle())
-                Button("Not now", action: connected).buttonStyle(SecondaryActionStyle())
             case .discovery:
                 discovery
             case .code:
@@ -52,6 +51,7 @@ struct SetupScreen: View {
                 manual
             case .ready:
                 ScreenHeading("", "You’re connected", "\(connection.currentDevice?.name ?? "Your TV") is ready.")
+                    .accessibilityFocused($headingFocused)
                 HeroCard(icon: "checkmark.circle", title: "Give it a try.",
                          detail: "Tap Home on your remote to check the connection. You can start using the basic buttons for free.")
                 Button("Open remote", action: connected).buttonStyle(PrimaryActionStyle())
@@ -68,6 +68,11 @@ struct SetupScreen: View {
             if connection.isConnecting { ProgressView("Connecting to TV") }
             if page != .approval || !connection.awaitingTVApproval { ConnectionMessage() }
         }
+        // Each step is a new scroll viewport, but the form values live above it.
+        .id(page)
+        .modifier(ScreenActions(isPresented: [.welcome, .network, .discovery].contains(page)) {
+            setupActions
+        })
         .modifier(CloseTool())
         .toolbar {
             if page != .welcome && movedDeviceID == nil {
@@ -87,13 +92,34 @@ struct SetupScreen: View {
                 }
             }
         }
-        .task(id: page) { if page == .discovery { await connection.discover() } }
+        .task(id: page) {
+            headingFocused = true
+            if page == .discovery { await connection.discover() }
+        }
         .onChange(of: connection.pairingPrompt) {
             if let prompt = connection.pairingPrompt { page = prompt == .approval ? .approval : .code }
         }
         .onChange(of: connection.pairingCompletion) { page = .ready }
         .interactiveDismissDisabled(connection.isConnecting)
         .onDisappear { connection.cancelPairing() }
+    }
+
+    @ViewBuilder private var setupActions: some View {
+        switch page {
+        case .welcome:
+            Button("Find my TV") { page = .network }.buttonStyle(PrimaryActionStyle())
+            NavigationLink("Supported TVs") { CompatibilityScreen() }.buttonStyle(SecondaryActionStyle())
+        case .network:
+            Button("Find TVs") { page = .discovery }.buttonStyle(PrimaryActionStyle())
+            Button("Not now", action: connected).buttonStyle(SecondaryActionStyle())
+        case .discovery:
+            if connection.supportsManualAddress {
+                Button("Enter IP address") { page = .manual }.buttonStyle(SecondaryActionStyle())
+            }
+            NavigationLink("Supported TVs") { CompatibilityScreen() }.frame(minHeight: 44)
+        default:
+            EmptyView()
+        }
     }
 
     private func chooseAnotherTV() {
@@ -106,6 +132,7 @@ struct SetupScreen: View {
     private var discovery: some View {
         Group {
             ScreenHeading("", "Find your TV", connection.isDemo ? "Simulated TVs nearby" : "Searching your local Wi-Fi…")
+                .accessibilityFocused($headingFocused)
             Panel {
                 Text("Looking nearby").font(.headline)
                 Text("Turn on your TV and keep this screen open.").foregroundStyle(RemoteTheme.muted)
@@ -126,16 +153,13 @@ struct SetupScreen: View {
                 Button("Search again") { Task { await connection.discover() } }.buttonStyle(PrimaryActionStyle())
             }
             SupportingCopy(title: "Don’t see your TV?", detail: "Check that both devices are on the same Wi-Fi. Guest networks can block discovery.")
-            if connection.supportsManualAddress {
-                Button("Enter IP address") { page = .manual }.buttonStyle(SecondaryActionStyle())
-            }
-            NavigationLink("Check compatibility") { CompatibilityScreen() }.frame(minHeight: 44)
         }
     }
 
     private var pairing: some View {
         Group {
             ScreenHeading("", "Check your TV", "Enter the code shown on the TV.")
+                .accessibilityFocused($headingFocused)
             HeroCard(icon: "tv", title: "Pair with \(connection.pairingDevice?.name ?? "your TV")",
                      detail: connection.isDemo ? "Use 123456 for the Bedroom demo TV."
                      : "Enter all characters exactly as shown. Your TV controls the code format.")
@@ -157,6 +181,7 @@ struct SetupScreen: View {
         Group {
             ScreenHeading("", movedDeviceID == nil ? "Add by IP address" : "Update TV address",
                           movedDeviceID == nil ? "When your TV doesn’t appear automatically." : "Enter the new address for your saved TV.")
+                .accessibilityFocused($headingFocused)
             Text("TV address").font(.subheadline).foregroundStyle(RemoteTheme.muted)
             TextField("192.168.1.42", text: $address)
                 .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -256,9 +281,11 @@ struct DevicesScreen: View {
                 }
                     .buttonStyle(PrimaryActionStyle())
             }
-            Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
             ConnectionMessage()
         }
+        .modifier(ScreenActions {
+            Button("Add a TV", systemImage: "plus", action: add).buttonStyle(PrimaryActionStyle())
+        })
         .onChange(of: connection.pairingCompletion) { connected() }
     }
 }

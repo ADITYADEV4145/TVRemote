@@ -10,8 +10,8 @@ struct SettingsScreen: View {
             ScreenHeading("", "Settings", "Make yourself at home.")
             Panel {
                 route("slider.horizontal.3", "Appearance", "System, light or dark") { AppearanceScreen() }
-                Toggle(isOn: $haptics) { DetailRow(icon: "hand.tap", title: "Haptics", detail: "A little feedback with each press") }
-                Toggle(isOn: $largeControls) { DetailRow(icon: "hand.point.up", title: "Large controls", detail: "Bigger targets, scrollable remote") }
+                SettingsToggle(icon: "hand.tap", title: "Haptics", detail: "A little feedback with each press", isOn: $haptics)
+                SettingsToggle(icon: "hand.point.up", title: "Large controls", detail: "Bigger targets, scrollable remote", isOn: $largeControls)
                 route("mic", "Voice", "On-device access and command help") { VoiceSettingsScreen() }
             }
             Panel {
@@ -218,9 +218,12 @@ struct SupportPreviewScreen: View {
                     .font(.subheadline).foregroundStyle(RemoteTheme.muted)
             }
             Panel { Text(report).font(.footnote.monospaced()).textSelection(.enabled) }
+        }
+        .modifier(ScreenActions {
             ShareLink(item: report) { Label("Share report", systemImage: "square.and.arrow.up") }
                 .buttonStyle(PrimaryActionStyle())
-        }.modifier(TaskSurface())
+        })
+        .modifier(TaskSurface())
     }
 }
 

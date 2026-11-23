@@ -84,6 +84,7 @@ struct RemoteAppItem: Identifiable {
 }
 
 struct AppsScreen: View {
+    enum Destination: Hashable { case favorites }
     @Environment(RemoteViewModel.self) private var connection
     @AppStorage("favoriteTVApps") private var favorites = ""
     @AppStorage("favoriteTVAppsByDevice") private var savedFavorites = Data()
@@ -164,7 +165,7 @@ struct AppsScreen: View {
                 HStack {
                     Text("All apps").font(.title3.weight(.semibold))
                     Spacer()
-                    NavigationLink("Edit favorites") { FavoritesScreen(favorites: favoriteOrder, catalog: catalog) }
+                    NavigationLink("Edit favorites", value: Destination.favorites)
                         .frame(minHeight: 44)
                 }
                 if matches.isEmpty { Text("No apps match your search.").foregroundStyle(RemoteTheme.muted) }
@@ -182,6 +183,9 @@ struct AppsScreen: View {
                 Button("Find a TV", action: setup).buttonStyle(SecondaryActionStyle())
             }
             ConnectionMessage()
+        }
+        .navigationDestination(for: Destination.self) { _ in
+            FavoritesScreen(favorites: favoriteOrder, catalog: catalog)
         }
         .task(id: connection.canControl ? connection.currentDevice?.id : nil) {
             guard !forceUnavailable, connection.canControl, connection.supportsAppList,
