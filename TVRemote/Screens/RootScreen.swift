@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct RootScreen: View {
     @Environment(RemoteViewModel.self) private var connection
@@ -90,55 +89,15 @@ struct RootScreen: View {
 /// Update the native bar's preference when this tab's resolved appearance changes.
 /// Keeping the TabView's identity preserves selection and navigation state.
 private struct MatchingTabAppearance: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.self) private var environment
 
     func body(content: Content) -> some View {
         content
-            .toolbarColorScheme(colorScheme, for: .tabBar)
-            .background {
-                NativeTabAppearance(colorScheme: colorScheme)
-                    .frame(width: 0, height: 0)
-                    .accessibilityHidden(true)
-            }
-    }
-}
-
-/// SwiftUI updates the tab items on a live theme switch, but iOS 26 can leave
-/// their glass material in the old style. Update only this tab's owning bar;
-/// do not replace its native material or mutate the global appearance proxy.
-private struct NativeTabAppearance: UIViewControllerRepresentable {
-    let colorScheme: ColorScheme
-
-    func makeUIViewController(context: Context) -> Controller {
-        let controller = Controller()
-        controller.interfaceStyle = colorScheme == .dark ? .dark : .light
-        return controller
-    }
-
-    func updateUIViewController(_ controller: Controller, context: Context) {
-        controller.interfaceStyle = colorScheme == .dark ? .dark : .light
-    }
-
-    final class Controller: UIViewController {
-        var interfaceStyle = UIUserInterfaceStyle.unspecified {
-            didSet { updateBarStyle() }
-        }
-
-        override func didMove(toParent parent: UIViewController?) {
-            super.didMove(toParent: parent)
-            updateBarStyle()
-        }
-
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            updateBarStyle()
-        }
-
-        private func updateBarStyle() {
-            guard let bar = tabBarController?.tabBar,
-                  bar.overrideUserInterfaceStyle != interfaceStyle else { return }
-            bar.overrideUserInterfaceStyle = interfaceStyle
-        }
+            .toolbarColorScheme(environment.colorScheme, for: .tabBar)
+            // Pass a new concrete value, not a cached dynamic UIColor-backed
+            // token, so the native bar refreshes its background on every tab.
+            .toolbarBackground(Color(RemoteTheme.surface.resolve(in: environment)), for: .tabBar)
+            .toolbarBackground(.visible, for: .tabBar)
     }
 }
 
