@@ -127,7 +127,7 @@ final class SimulatedTVTests: XCTestCase {
         case "samsung":
             app.buttons["Home"].tap()
             try await waitForStatus(on: brand, "open Home") { $0.app == "home" }
-            app.tabBars.buttons["Apps"].tap()
+            tabButton("Apps", identifier: "tab.apps", in: app).tap()
             let netflix = app.buttons["Netflix, Open on TV"]
             XCTAssertTrue(netflix.waitForExistence(timeout: 8))
             XCTAssertTrue(netflix.isEnabled)
@@ -135,7 +135,7 @@ final class SimulatedTVTests: XCTestCase {
             netflix.tap()
             try await waitForStatus(on: brand, "launch the listed Netflix app") { $0.app == "11101200001" }
             capture("samsung-app-list")
-            app.tabBars.buttons["Remote"].tap()
+            tabButton("Remote", identifier: "tab.remote", in: app).tap()
             let priorText = try await status(brand).text
             app.buttons["Keyboard"].tap()
             let draft = app.descendants(matching: .any)["searchDraft"].firstMatch
@@ -156,6 +156,11 @@ final class SimulatedTVTests: XCTestCase {
         default:
             XCTFail("Missing feature check for \(brand).")
         }
+    }
+
+    private func tabButton(_ title: String, identifier: String, in app: XCUIApplication) -> XCUIElement {
+        let floating = app.buttons[identifier].firstMatch
+        return floating.exists ? floating : app.tabBars.buttons[title]
     }
 
     @MainActor
