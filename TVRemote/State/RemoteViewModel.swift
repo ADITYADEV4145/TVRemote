@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import TVRemoteKit
 
@@ -10,6 +11,11 @@ final class RemoteViewModel {
         let timestamp = Date()
         let title: String
         let deviceID: TVDevice.ID?
+    }
+
+    struct CommandFailure {
+        let title: String
+        let reason: String
     }
 
     private(set) var state: ConnectionState = .idle
@@ -24,6 +30,10 @@ final class RemoteViewModel {
     private(set) var feedback: String?
     private(set) var error: String?
     private(set) var recentCommands: [RecentCommand] = []
+    private(set) var commandFailures: [TVDevice.ID: CommandFailure] = [:]
+    private(set) var checkDurations: [TVDevice.ID: Duration] = [:]
+    private(set) var networkStatus = "Not checked"
+    private(set) var networkPermission = "Not checked"
 
     let isDemo: Bool
     private let driver: MockTVDriver?
@@ -132,7 +142,20 @@ final class RemoteViewModel {
             guard currentDevice != nil, !isConnecting, !wakeInFlight, state == .ready || state == .degraded,
                   commandTail == nil, healthCheck == nil else { continue }
             let check = Task {
-                try? await live.manager.checkConnection()
+                let started = ContinuousClock.now
+                let selectedID = currentDevice?.id
+                do {
+                    try await live.manager.checkConnection()
+                    if let selectedID, selectedID == currentDevice?.id,
+                       live.device(selectedID)?.id.platform != .googleTV {
+                        checkDurations[selectedID] = started.duration(to: .now)
+                    }
+                } catch {
+                    if let selectedID, selectedID == currentDevice?.id, error as? TVError != .busy,
+                       !(error is CancellationError), commandFailures[selectedID] == nil {
+                        commandFailures[selectedID] = CommandFailure(title: "Connection check", reason: Self.describe(error))
+                    }
+                }
                 if let device = await live.manager.currentDevice, currentDevice != nil, !isConnecting {
                     currentDevice = live.save(device)
                     savedDevices = live.savedDevices
@@ -141,6 +164,23 @@ final class RemoteViewModel {
             healthCheck = check
             await check.value
             healthCheck = nil
+        }
+    }
+
+    func observeNetwork() async {
+        guard live != nil else { return }
+        let monitor = NWPathMonitor()
+        defer { monitor.cancel() }
+        let (paths, feed) = AsyncStream<NWPath>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        monitor.pathUpdateHandler = { feed.yield($0) }
+        monitor.start(queue: DispatchQueue(label: "TVRemote.NetworkDiagnostics"))
+        for await path in paths {
+            networkPermission = path.status == .unsatisfied && path.unsatisfiedReason == .localNetworkDenied
+                ? "Access denied" : "Not checked"
+            if path.status != .satisfied { networkStatus = "No active network path" }
+            else if path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet) {
+                networkStatus = "Wi-Fi or Ethernet path available"
+            } else { networkStatus = "Network path available; TV reachability not verified" }
         }
     }
 
@@ -282,6 +322,8 @@ final class RemoteViewModel {
             catch { self.error = error.localizedDescription; return }
         }
         demoCredentials.removeValue(forKey: device.id)
+        commandFailures.removeValue(forKey: device.id)
+        checkDurations.removeValue(forKey: device.id)
         savedDevices.removeAll { $0.id == device.id }
         if pairingDevice?.id == device.id { cancelPairing() }
         guard currentDevice?.id == device.id else { return }
@@ -552,6 +594,9 @@ final class RemoteViewModel {
             if recentCommands.count > 20 { recentCommands.removeLast() }
             if messageGeneration == generation { feedback = message }
         } catch {
+            if let deviceID, !(error is CancellationError) {
+                commandFailures[deviceID] = CommandFailure(title: command, reason: Self.describe(error))
+            }
             guard messageGeneration == generation else { return }
             feedback = nil
             self.error = Self.describe(error)

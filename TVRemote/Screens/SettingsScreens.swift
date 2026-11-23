@@ -91,8 +91,8 @@ struct DiagnosticsScreen: View {
             ScreenHeading("", "Fix my connection", "Let’s get you back to watching.")
             Panel {
                 DetailRow(icon: "tv", title: connection.currentDevice?.name ?? "No TV selected", detail: connection.state.rawValue)
-                DetailRow(icon: "wifi", title: "Local network", detail: connection.isDemo ? "Not checked · Demo mode" : "Not checked by this driver")
-                DetailRow(icon: "lock.shield", title: "Local Network permission", detail: "Not checked")
+                DetailRow(icon: "wifi", title: "Local network", detail: connection.isDemo ? "Not checked · Demo mode" : connection.networkStatus)
+                DetailRow(icon: "lock.shield", title: "Local Network permission", detail: connection.networkPermission)
                 DetailRow(icon: "key", title: "Pairing", detail: connection.state == .needsRepair ? "Needs authorization" : "Use the TV’s approval or code when asked")
             }
             if connection.currentDevice != nil {
@@ -123,6 +123,7 @@ struct DiagnosticsScreen: View {
             ConnectionMessage()
         }
         .modifier(TaskSurface())
+        .task { await connection.observeNetwork() }
         .onAppear { connection.clearMessages() }
         .onChange(of: connection.pairingPrompt) {
             if connection.pairingPrompt != nil && !editingAddress { showRepair = true }
@@ -164,7 +165,10 @@ struct ConnectionDetailsScreen: View {
                 DetailRow(icon: "tv", title: "TV", detail: target?.name ?? "None selected")
                 DetailRow(icon: "circle.dotted", title: "Driver state", detail: selected ? connection.state.rawValue : "Not selected")
                 DetailRow(icon: "testtube.2", title: "Mode", detail: connection.isDemo ? "In-process simulation" : "Live driver")
-                DetailRow(icon: "clock", title: "Latency", detail: "Not measured")
+                DetailRow(icon: "clock", title: "Last connection check", detail: checkTime)
+                if let id = target?.id, let failure = connection.commandFailures[id] {
+                    DetailRow(icon: "exclamationmark.circle", title: "Last failure: \(failure.title)", detail: failure.reason)
+                }
             }
             Text("Recent commands").font(.title3.weight(.semibold))
             Panel {
@@ -179,6 +183,13 @@ struct ConnectionDetailsScreen: View {
                 NavigationLink("Preview support report") { SupportPreviewScreen() }.buttonStyle(SecondaryActionStyle())
             }
         }.modifier(TaskSurface())
+    }
+
+    private var checkTime: String {
+        guard let id = target?.id, let duration = connection.checkDurations[id] else { return "Not measured" }
+        let parts = duration.components
+        let milliseconds = parts.seconds * 1_000 + parts.attoseconds / 1_000_000_000_000_000
+        return "\(milliseconds) ms elapsed"
     }
 }
 

@@ -258,6 +258,10 @@ final class ConnectionManagerTests: XCTestCase {
         await connection.send(.channelUp)
         XCTAssertFalse(connection.canChangeChannel)
         XCTAssertTrue(connection.canControl)
+        connection.clearMessages()
+        XCTAssertEqual(connection.commandFailures[connection.currentDevice?.id ?? ""]?.title, "Channel up")
+        XCTAssertEqual(connection.commandFailures[connection.currentDevice?.id ?? ""]?.reason,
+                       "This command isn’t available for this connection.")
         await connection.send(.channelDown)
         await connection.send(.volumeUp)
         let keys = await driver.keys
