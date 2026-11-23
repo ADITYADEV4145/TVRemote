@@ -41,6 +41,7 @@ struct SceneEditorScreen: View {
     @AppStorage("sceneDraftSteps") private var savedSteps = ""
     @State private var name = ""
     @State private var steps: [SceneStep] = []
+    @State private var loadedDraft = false
     @Environment(\.dismiss) private var dismiss
     var sample = false
 
@@ -79,6 +80,8 @@ struct SceneEditorScreen: View {
         }
         .modifier(TaskSurface())
         .onAppear {
+            guard !loadedDraft else { return }
+            loadedDraft = true
             name = sample ? "Movie night" : savedName
             steps = sample ? [.home, .volumeDown, .playPause] : SceneStep.decode(savedSteps)
         }
