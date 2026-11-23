@@ -110,7 +110,7 @@ public actor ConnectionManager {
     public func send(_ key: RemoteKey) async throws {
         let replay: Bool
         if case .text = key { replay = false } else { replay = true }
-        try await perform(replay: replay) { try await $0.send(key) }
+        try await perform(replay: replay, standbyIsSuccess: key == .powerOff) { try await $0.send(key) }
     }
 
     public func launch(_ app: AppID) async throws {
@@ -163,9 +163,11 @@ public actor ConnectionManager {
     }
 
     private func perform(
-        replay: Bool = true, _ operation: @Sendable (any TVDriver) async throws -> Void
+        replay: Bool = true, standbyIsSuccess: Bool = false,
+        _ operation: @Sendable (any TVDriver) async throws -> Void
     ) async throws {
         guard !commandInFlight else { throw TVError.busy }
+        if standbyIsSuccess && phase == .asleep { return }
         guard let tv = currentDevice, let driver, phase == .ready else { throw TVError.notConnected }
         let token = generation
         commandInFlight = true
@@ -178,6 +180,11 @@ public actor ConnectionManager {
             try ensureCurrent(token)
         } catch {
             try ensureCurrent(token)
+            if error as? TVError == .asleep {
+                fail(error, token: token)
+                if standbyIsSuccess { return }
+                throw error
+            }
             guard Self.isRecoverable(error) else {
                 if error as? TVError == .credentialRejected || error as? TVError == .pairingRequired {
                     fail(error, token: token)
@@ -191,7 +198,9 @@ public actor ConnectionManager {
                 let credential = try await loadCredential(for: tv)
                 try ensureCurrent(token)
                 guard replay else {
-                    try await recover(tv, credential: credential, factory: factory, token: token, initialError: error)
+                    try await recover(
+                        tv, credential: credential, factory: factory, token: token, attemptWake: false, initialError: error
+                    )
                     throw error
                 }
                 do {
@@ -211,13 +220,16 @@ public actor ConnectionManager {
                         throw error
                     }
                 } catch {
-                    guard Self.isRecoverable(error) else { throw error }
+                    guard Self.isRecoverable(error), error as? TVError != .asleep else { throw error }
                     try ensureCurrent(token)
-                    try await recover(tv, credential: credential, factory: factory, token: token, initialError: error)
+                    try await recover(
+                        tv, credential: credential, factory: factory, token: token, attemptWake: false, initialError: error
+                    )
                     throw error
                 }
             } catch {
                 if phase != .ready { fail(error, token: token) }
+                if standbyIsSuccess && error as? TVError == .asleep { return }
                 throw error
             }
         }

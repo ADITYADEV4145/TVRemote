@@ -152,6 +152,23 @@ private struct ImmediateClock: ConnectionClock {
     func sleep(for duration: Duration) async throws { try Task.checkCancellation() }
 }
 
+@Test func reachableRokuStandbyDoesNotTurnAnyCommandIntoWake() async throws {
+    let standby = deviceInfo(power: "PowerOff")
+    let transport = Transcript([deviceInfo(), deviceInfo(), standby, standby])
+    let manager = ConnectionManager(
+        drivers: [TVDriverFactory(platform: .roku) { RokuECPDriver(http: transport) }],
+        credentials: MemoryCredentialStore(), clock: ImmediateClock()
+    )
+    let tv = try await manager.probe(endpoint, platform: .roku)
+    try await manager.connect(tv)
+    try await manager.send(.powerOff)
+    await #expect(throws: TVError.asleep) { try await manager.send(.volumeUp) }
+    try await manager.send(.powerOff)
+    #expect(await transport.requests.map(\.method) == [.get, .get, .get, .get])
+    var states = manager.state.makeAsyncIterator()
+    #expect(await states.next() == .asleep)
+}
+
 @Test func ssdpRequiresMatchingSourceAndPlatformFingerprint() {
     func packet(_ host: String, target: String = "roku:ecp") -> Data {
         Data("HTTP/1.1 200 OK\r\nLocation: http://\(host):8060/\r\nST: \(target)\r\n\r\n".utf8)

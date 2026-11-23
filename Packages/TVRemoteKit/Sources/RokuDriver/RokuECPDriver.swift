@@ -64,7 +64,12 @@ public actor RokuECPDriver: TVDriver {
     public func send(_ key: RemoteKey) async throws {
         let keys = try Self.ecpKeys(key)
         guard !keys.isEmpty else { return }
-        let endpoint = try await verifiedEndpoint()
+        let endpoint: TVEndpoint
+        do {
+            endpoint = try await verifiedEndpoint()
+        } catch TVError.asleep where key == .powerOff {
+            return
+        }
         for code in keys {
             _ = try await request(.post, endpoint: endpoint, path: "/keypress/" + Self.encodeSegment(code))
         }
