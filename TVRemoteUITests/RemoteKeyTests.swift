@@ -25,6 +25,25 @@ final class RemoteKeyTests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Keep using Buttons"].exists)
     }
 
+    func testRemoteModeRespondsAcrossTheWholeSegment() {
+        continueAfterFailure = false
+        let app = launchSetup()
+        app.buttons["Find my TV"].tap()
+        app.buttons["Find TVs"].tap()
+        select("Bedroom", in: app)
+        let code = app.textFields["pairingCode"]
+        XCTAssertTrue(code.waitForExistence(timeout: 5))
+        code.tap()
+        code.typeText("123456")
+        app.buttons["Pair TV"].tap()
+        XCTAssertTrue(app.buttons["Open remote"].waitForExistence(timeout: 5))
+        app.buttons["Open remote"].tap()
+        app.buttons["Touchpad"].coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertTrue(app.staticTexts["Swipe to move"].waitForExistence(timeout: 5))
+        app.buttons["Buttons"].coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["OK"].waitForExistence(timeout: 5))
+    }
+
     private func assertAboveTabBar(_ button: XCUIElement, in app: XCUIApplication,
                                    file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(button.waitForExistence(timeout: 5), file: file, line: line)

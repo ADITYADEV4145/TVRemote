@@ -92,6 +92,7 @@ struct RemoteScreen: View {
             Text(title).font(.subheadline.weight(selected ? .semibold : .regular))
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .background(selected ? RemoteTheme.surface : .clear, in: Capsule())
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .foregroundStyle(RemoteTheme.text)
